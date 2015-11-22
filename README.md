@@ -28,6 +28,13 @@ We use the the original VGG-19 model. You can find the download script at [Neura
 # Un-guided Synthesis
 * to be added
 
+
+# Hardware
+* Our algorithm requires efficient GPU memory to run. A Titan X (12G memory) is able to complete the above examples with default setting. For GPU with 4G memory or 2G memory, please use the reference parameter setting in the  "run_trans.lua" and "run_syn.lua"
+
+
 # Acknowledgement
 * This work is inspired and closely related to the paper: [A Neural Algorithm of Artistic Style](http://arxiv.org/abs/1508.06576) by Leon A. Gatys, Alexander S. Ecker, and Matthias Bethge. The key difference between their method and our method is the different "style" constraints: While Gatys et al used a global constraint for non-photorealistic synthesis, we use a local constraint which works for both non-photorealistic and photorealistic synthesis. See our paper for more details.
 * Our implementation is based on Justin Johnson's implementation of [Neural Style](https://github.com/jcjohnson/neural-style).   
+
+
