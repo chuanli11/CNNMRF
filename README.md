@@ -1,13 +1,13 @@
 # CNNMRF
-This is the code for paper "Combining Markov Random Fields and Convolutional Neural Networks for Image Synthesis"
+This is the torch implementation for paper "Combining Markov Random Fields and Convolutional Neural Networks for Image Synthesis"
 
-This algorithm can be used for
+This algorithm is for
 * un-guided image synthesis (for example, classical texture synthesis)
 * guided image synthesis (for example, transfer the style between different images)
 
 # Setup
 
-This code is based on Torch. Currently it is only tested on Mac and Ubuntu.
+This code is based on Torch. It has only been tested on Mac and Ubuntu.
 
 Dependencies:
 * [Torch](https://github.com/torch/torch7)
@@ -16,14 +16,14 @@ Dependencies:
 * [cudnn](https://developer.nvidia.com/cudnn)
 
 Pre-trained network:
-We use the the original VGG-19 model. You can find the download script from [Neural Style](https://github.com/jcjohnson/neural-style). The downloaded model and prototxt file MUST be saved in "data/models"
+We use the the original VGG-19 model. You can find the download script at [Neural Style](https://github.com/jcjohnson/neural-style). The downloaded model and prototxt file MUST be saved in the folder "data/models"
 
 
-# Style transfer 
+# Guided Synthesis
 * In terminal simply run `qlua run_trans.lua`
-* The content/style images are located in "data/content" and "data/style" respectively. 
-* Results are located in "data/result/tarns/MRF"
-* Parameters are defined in "run_trans.lua"
+* The content/style images are located in the folders "data/content" and "data/style" respectively. 
+* Results are located in the folder "data/result/trans/MRF"
+* Parameters are defined & explained in "run_trans.lua".
 
 # Un-guided Synthesis
 * to be added
