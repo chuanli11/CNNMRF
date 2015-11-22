@@ -25,7 +25,7 @@ We use the the original VGG-19 model. You can find the download script at [Neura
 * Parameters are defined & explained in "run_syn.lua".
 
 # Guided Synthesis
-* Run `qlua run_trans.lua` in a terminal.
+* Run `qlua run_trans.lua` in a terminal. The algorithm will synthesis using the texture of the style image and the structure of the content image. 
 * The content/style images are located in the folders "data/content" and "data/style" respectively. 
 * Results are located in the folder "data/result/trans/MRF"
 * Parameters are defined & explained in "run_trans.lua".
