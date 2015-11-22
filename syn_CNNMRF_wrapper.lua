@@ -6,20 +6,12 @@ require 'paths'
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
 local loadcaffe_wrap = require 'loadcaffe_wrapper'
 
-
-
-local function run_test(content_name, style_name, ini_method, num_iter, mrf_layers, mrf_patch_size, mrf_num_rotation, mrf_num_scale, content_weight)
-
-  
-
+local function run_test(content_name, style_name, ini_method, num_iter, mrf_layers, mrf_patch_size, mrf_num_rotation, mrf_num_scale, content_weight, mrf_layer_conf_threshold, mrf_weights)
   local flag_state = 1
 
   local cmd = torch.CmdLine()
 
   local function main(params)
-
-      
-
       local timer_main = torch.Timer()
 
       local ini_block_caffe = nil
@@ -53,7 +45,6 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       local mask = nil
       local mask_weight = nil
 
-
       if params.gpu >= 0 then
         require 'cutorch'
         require 'cunn'
@@ -71,6 +62,7 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       if params.gpu >= 0 then
         cnn:cuda()
       end
+
       -----------------------------------------------------
       print('read & scale content and style images')
       -----------------------------------------------------
@@ -96,6 +88,30 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       local ini_image_caffe = preprocess(ini_image):float()
       print('ini_image size: ')
       print(ini_image:size())   
+
+      -- local content_image = image.load(params.content_image, 3)
+      -- local new_height = (params.image_size / content_image:size()[2]) * content_image:size()[3]
+      -- content_image = image.scale(content_image, (params.image_size / content_image:size()[2]) * content_image:size()[3], 'bilinear')
+      -- local content_image_caffe = preprocess(content_image):float()
+      -- print('content_image size: ')
+      -- print(content_image:size())
+
+      -- local style_image = image.load(params.style_image, 3)
+      -- style_image = image.scale(style_image, (params.style_size / style_image:size()[2]) * style_image:size()[3], 'bilinear')
+      -- local style_image_caffe = preprocess(style_image):float()
+      -- print('style_image size: ')
+      -- print(style_image:size())
+
+      -- local mrf_image = image.load(params.mrf_image, 3)
+      -- mrf_image = image.scale(mrf_image, (params.style_size / style_image:size()[2]) * style_image:size()[3], 'bilinear')
+      -- print('mrf_image size: ')
+      -- print(mrf_image:size())
+
+      -- local ini_image = image.load(params.ini_image, 3)
+      -- ini_image = image.scale(ini_image, content_image:size()[3], content_image:size()[2], 'bilinear')
+      -- local ini_image_caffe = preprocess(ini_image):float()
+      -- print('ini_image size: ')
+      -- print(ini_image:size())
 
       if params.gpu >= 0 then
         content_image_caffe = content_image_caffe:cuda()
@@ -125,7 +141,10 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       -- local function for adding a mrf layer, with image rotation andn scaling
       --------------------------------------------------------------------------------------------------------
       local function add_layer_mrf()
+        
 
+        i_mrf_layer = i_mrf_layer + 1
+        table.insert(mrf_layers, i_mrf_layer, i_net_layer)
 
         -- do rotation 
         local filters_mrf = torch.Tensor(0, 0)
@@ -145,12 +164,15 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
             end
             -- forward the mrf image
             local target_features = net:forward(mrf_image_caffe_rt):clone()
+
+            print(target_features:size())
+            print(mrf_layer_patch_size[next_mrf_idx])
             if mrf_layer_patch_size[next_mrf_idx] > target_features:size()[2] or mrf_layer_patch_size[next_mrf_idx] > target_features:size()[3] then 
               return false
             end
 
             -- design a bunch of filters
-            local t_filters_mrf_, filters_mrf_, coord_x_, coord_y_ = computeMRF(target_features,  mrf_layer_patch_size[next_mrf_idx],  mrf_layer_sample_stride[next_mrf_idx], params.gpu) 
+            local t_filters_mrf_, filters_mrf_, coord_x_, coord_y_ = computeMRF(target_features,  mrf_layer_patch_size[next_mrf_idx],  mrf_layer_sample_stride[next_mrf_idx], params.gpu)
             mrf_num_x = coord_x_:nElement()
             mrf_num_y = coord_y_:nElement()
 
@@ -189,15 +211,12 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
         else
           mrf_module:float()
         end
-
-        i_mrf_layer = i_mrf_layer + 1
-        table.insert(mrf_layers, i_mrf_layer, i_net_layer)
-
         i_net_layer = i_net_layer + 1
         net:add(mrf_module)
         next_mrf_idx = next_mrf_idx + 1 
 
         return true
+
       end
 
       --------------------------------------------------------------------------------------------------------
@@ -343,24 +362,23 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
           i_net_layer = i_net_layer + 1
           net:add(layer)
 
-          -- -- -- add mrf_losses layer
+          -- -- add mrf_losses layer
           if i == mrf_layers_pretrained[next_mrf_idx] then
-
            if add_layer_mrf() then
            else
               mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
                 if add_layer_mrf() then
                 else
                   mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
-                  if add_layer_mrf() then
-                  else
-                    mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
                     if add_layer_mrf() then
                     else
-                      print('error in add_layer')
-                      do return end
+                      mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
+                      if add_layer_mrf() then
+                      else
+                        print('error in add_layer')
+                        do return end
+                      end
                     end
-                  end
                 end
             end
           end
@@ -437,7 +455,7 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       -- -- save the final output of this scale
       output = deprocess(input_caffe:float())
       output = image.minmax{tensor=output, min=0, max=1}
-      local filename_output = params.output_folder .. '/' .. params.content_name .. '_to_' .. params.style_name .. '_MRF_res_' .. string.format('%d', params.res) .. '.png'
+      local filename_output = params.output_folder .. '/' .. params.result_name .. '_MRF_res_' .. string.format('%d', params.res) .. '.png'
       image.save(filename_output, output) 
 
       local filename_temp = params.output_folder .. '/' .. 'syn_res_' .. string.format('%d', params.res) .. '.png'
@@ -469,7 +487,6 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
       local t_main = timer_main:time().real
       print('t_main: ' .. t_main .. ' seconds')
   end -- end of main
-
 
 
   function build_filename(output_image, iteration)
@@ -615,25 +632,24 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   ------------------------------------------------------------------------
   -- excute main
   ------------------------------------------------------------------------
-  
 
+  ---------------------------------------------------------------
+  -- Resolution 1
+  ---------------------------------------------------------------
   -- input options
   cmd:option('-proto_file', 'data/models/VGG_ILSVRC_19_layers_deploy.prototxt')
   cmd:option('-model_file', 'data/models/VGG_ILSVRC_19_layers.caffemodel')
   cmd:option('-normalize_gradients', false)
 
-  local ini_name = content_name
-
-  local result_name = content_name .. '_to_' .. style_name .. '_MRF'
-  cmd:option('-style_name', style_name, 'style name')
-  cmd:option('-content_name', content_name, 'content name')
+  local result_name = style_name .. '_free_MRF'
+  cmd:option('-result_name', style_name .. '_free', 'output name prefix')
   cmd:option('-style_image', './data/style/' .. style_name .. '.jpg',
             'Style target image')
   cmd:option('-mrf_image', './data/style/' .. style_name .. '.jpg',
             'MRF target image')
   cmd:option('-content_image', './data/content/' .. content_name .. '.jpg',
             'Content target image')
-  cmd:option('-ini_image', './data/content/' .. ini_name .. '.jpg',
+  cmd:option('-ini_image', './data/content/' .. content_name .. '.jpg',
             'initial target image')
 
   cmd:option('-init', ini_method, 'random|image')
@@ -642,11 +658,6 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   cmd:option('-gpu', 0, 'Zero-indexed ID of the GPU to use; for CPU mode set -gpu = -1')
   cmd:option('-backend', 'cudnn', 'nn|cudnn')
 
-  cmd:option('-content_layers_pretrained', {23}, '')
-  cmd:option('-content_weight', content_weight)
-
-  
-
   -- resolution options
   cmd:option('-render_size', 256, '')
 
@@ -654,41 +665,46 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   cmd:option('-nCorrection', 100)
 
   -- Output options
+  
   cmd:option('-print_iter', 50)
   cmd:option('-save_iter', 50)
   cmd:option('-output_image', 'out.png')
 
+  -- -- Texture Optimization
   cmd:option('-tv_weight', 1e-3)
+
+  cmd:option('-content_layers_pretrained', {}, '')
+  cmd:option('-content_weight', 0)
 
   cmd:option('-style_layers_pretrained', {}, '')
   cmd:option('-style_layer_weights', {}, '')
-  cmd:option('-style_weight', 1e2)
+  cmd:option('-style_weight', 0)
 
   cmd:option('-mrf_layers_pretrained', mrf_layers, '')
-  cmd:option('-mrf_layer_weights', {3e-5, 3e-5, 3e-5, 3e-5, 3e-5, 3e-5, 3e-5}, '') 
+  cmd:option('-mrf_layer_weights', {1e-5, 1e-5, 1e-5, 1e-5, 1e-5, 1e-5, 1e-5}, '') 
   cmd:option('-mrf_layer_patch_size', mrf_patch_size, 'patch size')
-  cmd:option('-mrf_layer_sample_stride', {1, 1, 1, 1, 1, 1, 1, 1}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
+  cmd:option('-mrf_layer_sample_stride', {1, 1, 1, 1, 1, 1, 1}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
   cmd:option('-mrf_layer_synthesis_stride', {1, 1, 1, 1, 1, 1, 1}, 'stride for synthesis mrf on the output image. In general this should be kept small so patches overlap')
-  cmd:option('-mrf_layer_confidence_threshold', {0, 0, 0, 0, 0, 0}, 'threshold for adding mrf into the target. MRF with confidence smaller than this value will not be used')
+  cmd:option('-mrf_layer_confidence_threshold', {0, 0, 0, 0, 0, 0, 0}, 'threshold for adding mrf into the target. MRF with confidence smaller than this value will not be used')
 
   cmd:option('-mrf_num_rotation', mrf_num_rotation, '')
   cmd:option('-mrf_num_scale', mrf_num_scale, '')
   cmd:option('-mrf_step_rotation', math.pi/24, '')
   cmd:option('-mrf_step_scale', 1.05, '')
 
-  cmd:option('-output_folder', 'data/result/trans/MRF/' .. result_name, 'output folder')
-  os.execute("mkdir " .. 'data/result/trans/MRF/')
-
   cmd:option('-image_size', 64, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 64, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 41, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 41, 'Maximum height / width of style image')
+  cmd:option('-style_size', 32, 'Maximum height / width of style image')
 
   cmd:option('-render_size', 256, '')
   cmd:option('-res', 1, 'resolution of synthesis')
-  cmd:option('-num_iterations', num_iter[1])
 
+
+  cmd:option('-output_folder', 'data/result/freesyn/MRF/' .. result_name, 'output folder')
+  cmd:option('-num_iterations', num_iter[1])
   local params = cmd:parse(arg)
+
+  -- make a folder for result
+  os.execute("mkdir " .. 'data/result/freesyn/MRF/')
   os.execute("mkdir " .. params.output_folder)
 
   ---------------------------------------------------------------
@@ -701,17 +717,16 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   ---------------------------------------------------------------
   cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_1.png',
              'initial target image')
+
   cmd:option('-image_size', 128, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 128, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 83, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 82, 'Maximum height / width of style image')
+  cmd:option('-style_size', 64, 'Maximum height / width of style image')
 
   cmd:option('-render_size', 256, '')
+
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 2, 'resolution of synthesis')
   cmd:option('-num_iterations', num_iter[2])
-  
-  -- cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3}, 'patch size')
+
   local params = cmd:parse(arg)
   main(params)
 
@@ -720,14 +735,16 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   ---------------------------------------------------------------
   cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_2.png',
              'initial target image')
+
   cmd:option('-image_size', 256, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 256, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 166, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 165, 'Maximum height / width of style image')
+  cmd:option('-style_size', 128, 'Maximum height / width of style image')
 
   cmd:option('-render_size', 256, '')
+
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 3, 'resolution of synthesis')
+
+  -- -- use less interation to save time
   cmd:option('-num_iterations', num_iter[3])
 
   -- use larger patch has the danger of crash gpu
@@ -741,23 +758,24 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   ---------------------------------------------------------------
   cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_3.png',
              'initial target image')
+  
   cmd:option('-image_size', 384, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 384, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 249, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 247, 'Maximum height / width of style image') 
+  cmd:option('-style_size', 192, 'Maximum height / width of style image')
 
-  cmd:option('-render_size', 384, '')
+  cmd:option('-render_size', 256, '')
+
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 4, 'resolution of synthesis')
+
+  -- -- use less interation to save time
   cmd:option('-num_iterations', num_iter[4])
 
-  -- use larger patch has the danger of crash gpu
-  -- cmd:option('-mrf_layer_patch_size', {2, 2, 2, 2, 2, 2, 2}, 'patch size')
 
-  cmd:option('-mrf_layer_patch_size', {3, 3}, 'patch size')
+  -- use larger patch has the danger of crash gpu
+  cmd:option('-mrf_layers_pretrained', {12}, '') -- use finer details for the last resolution
+  cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3, 3}, 'patch size')
   cmd:option('-mrf_layer_sample_stride', {2, 2}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
   cmd:option('-mrf_layer_synthesis_stride', {2, 2}, 'stride for synthesis mrf on the output image. In general this should be kept small so patches overlap')
-
 
   local params = cmd:parse(arg)
   main(params)
