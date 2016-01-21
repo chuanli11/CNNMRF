@@ -2,9 +2,9 @@ require 'torch'
 require 'nn'
 require 'image'
 require 'paths'
+require 'loadcaffe'
 
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
-local loadcaffe_wrap = require 'loadcaffe_wrapper'
 
 local function run_test(content_name, style_name, ini_method, num_iter, mrf_layers, mrf_patch_size, mrf_num_rotation, mrf_num_scale, content_weight, mrf_layer_conf_threshold, mrf_weights)
   local flag_state = 1
@@ -57,7 +57,7 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
         require 'cudnn'
       end
       
-      local cnn = loadcaffe_wrap.load(params.proto_file, params.model_file, params.backend):float()
+      local cnn = loadcaffe.load(params.proto_file, params.model_file, params.backend):float()
 
       if params.gpu >= 0 then
         cnn:cuda()
