@@ -2,6 +2,7 @@ require 'torch'
 require 'nn'
 require 'image'
 require 'paths'
+require 'loadcaffe'
 
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
 

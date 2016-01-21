@@ -1,0 +1,1 @@
+This is the folder for storing free synthesis texture results.
