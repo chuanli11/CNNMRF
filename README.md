@@ -6,11 +6,20 @@ This algorithm is for
 * guided image synthesis (for example, transfer the style between different images)
 
 # Example
-* un-guided image synthesis
+* guided image synthesis
+<p><a href="url"><img src="/data/examples/content.jpg" align="left" height="333" ></a></p>
+<p><a href="url"><img src="/data/examples/Interpolation/3_balanced.png" align="left" height="333" ></a></p>
+<p><a href="url"><img src="/data/examples/style.jpg" align="left" height="333" ></a></p>
 
+<p>A photo (left) is transfered into a painting (right) using Picasso's self portrait 1907 (middle) as the reference style. Notice important facial features, such as eyes and nose, are very similar in the middle and the right images</p>
+
+
+<p><a href="url"><img src="/data/content/1.jpg" align="left" height="250" ></a></p>
+<p><a href="url"><img src="/data/style/1.jpg" align="left" height="250" ></a></p>
+<p><a href="url"><img src="/data/examples/0_to_0.png" align="left" height="250" ></a></p>
+<p><a href="url"><img src="/data/examples/1_to_1.png" align="left" height="250" ></a></p>
 
 # Setup
-
 This code is based on Torch. It has only been tested on Mac and Ubuntu.
 
 Dependencies:
