@@ -681,10 +681,8 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
 
   cmd:option('-image_size', 64, 'Maximum height / width of generated image')
   cmd:option('-style_size', 64, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 41, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 41, 'Maximum height / width of style image')
 
-  cmd:option('-render_size', 256, '')
+  cmd:option('-render_size', 384, '')
   cmd:option('-res', 1, 'resolution of synthesis')
   cmd:option('-num_iterations', num_iter[1])
 
@@ -703,15 +701,10 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
              'initial target image')
   cmd:option('-image_size', 128, 'Maximum height / width of generated image')
   cmd:option('-style_size', 128, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 83, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 82, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
+  cmd:option('-render_size', 384, '')
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 2, 'resolution of synthesis')
   cmd:option('-num_iterations', num_iter[2])
-  
-  -- cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3}, 'patch size')
   local params = cmd:parse(arg)
   main(params)
 
@@ -722,16 +715,10 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
              'initial target image')
   cmd:option('-image_size', 256, 'Maximum height / width of generated image')
   cmd:option('-style_size', 256, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 166, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 165, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
+  cmd:option('-render_size', 384, '')
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 3, 'resolution of synthesis')
   cmd:option('-num_iterations', num_iter[3])
-
-  -- use larger patch has the danger of crash gpu
-  cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3}, 'patch size')
 
   local params = cmd:parse(arg)
   main(params)
@@ -743,17 +730,13 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
              'initial target image')
   cmd:option('-image_size', 384, 'Maximum height / width of generated image')
   cmd:option('-style_size', 384, 'Maximum height / width of style image')
-  -- cmd:option('-style_size', 249, 'Maximum height / width of style image') -- 144
-  -- cmd:option('-style_size', 247, 'Maximum height / width of style image') 
 
   cmd:option('-render_size', 384, '')
   cmd:option('-init', 'image', 'random|image')
   cmd:option('-res', 4, 'resolution of synthesis')
   cmd:option('-num_iterations', num_iter[4])
 
-  -- use larger patch has the danger of crash gpu
-  -- cmd:option('-mrf_layer_patch_size', {2, 2, 2, 2, 2, 2, 2}, 'patch size')
-
+  -- use fix this for gpu safety
   cmd:option('-mrf_layer_patch_size', {3, 3}, 'patch size')
   cmd:option('-mrf_layer_sample_stride', {2, 2}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
   cmd:option('-mrf_layer_synthesis_stride', {2, 2}, 'stride for synthesis mrf on the output image. In general this should be kept small so patches overlap')

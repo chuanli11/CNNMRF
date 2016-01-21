@@ -6,11 +6,35 @@ This algorithm is for
 * guided image synthesis (for example, transfer the style between different images)
 
 # Example
-* un-guided image synthesis
+* guided image synthesis
 
+<p><a href="/data/examples/content.jpg" target="_blank"><img src="/data/examples/content.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/examples/style.jpg" target="_blank"><img src="/data/examples/style.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/3_balanced.png" target="_blank"><img src="/data/examples/Interpolation/3_balanced.png" height="320px" style="max-width:100%;"></a>
+</p>
+
+<p>A photo (left) is transfered into a painting (right) using Picasso's self portrait 1907 (middle) as the reference style. Notice important facial features, such as eyes and nose, are faithfully kept as those in the Picasso's painting.</p>
+
+<p><a href="/data/content/1.jpg" target="_blank"><img src="/data/content/1.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/style/1.jpg" target="_blank"><img src="/data/style/1.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/examples/0_to_0.png" target="_blank"><img src="/data/examples/1_to_1.png" height="320px" style="max-width:100%;"></a></p>
+<p>In this example, we first transfer a cartoon into a photo.</p>
+<p><a href="/data/content/1.jpg" target="_blank"><img src="/data/style/1.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/style/1.jpg" target="_blank"><img src="/data/content/1.jpg" height="320px" style="max-width:100%;"></a>
+<a href="/data/examples/1_to_1.png" target="_blank"><img src="/data/examples/0_to_0.png" height="320px" style="max-width:100%;"></a></p>
+<p>We then swap the two inputs and transfer the photo into the cartoon.</p>
+
+<p><a href="/data/examples/content.jpg" target="_blank"><img src="/data/examples/content.jpg" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/2_morecontent.png" target="_blank"><img src="/data/examples/Interpolation/2_morecontent.png" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/4_morestyle.png" target="_blank"><img src="/data/examples/Interpolation/4_morestyle.png" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/style.jpg" target="_blank"><img src="/data/examples/style.jpg" height="256px" style="max-width:100%;"></a></p>
+<p><a href="/data/examples/content2.jpg" target="_blank"><img src="/data/examples/content2.jpg" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/2_morecontent2.png" target="_blank"><img src="/data/examples/Interpolation/2_morecontent2.png" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/4_morestyle2.png" target="_blank"><img src="/data/examples/Interpolation/4_morestyle2.png" height="256px" style="max-width:100%;"></a>
+<a href="/data/examples/style2.jpg" target="_blank"><img src="/data/examples/style2.jpg" height="200px" style="max-width:100%;"></a></p>
+<p>It is possible to balance the amount of content and the style in the result: pictures in the second coloumn take more content, and pictures in the third column take more style.</p>
 
 # Setup
-
 This code is based on Torch. It has only been tested on Mac and Ubuntu.
 
 Dependencies:
