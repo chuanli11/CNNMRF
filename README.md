@@ -7,9 +7,9 @@ This algorithm is for
 
 # Example
 * guided image synthesis
-<p><a href="url"><img src="/data/examples/content.jpg" align="left" height="333" ></a></p>
-<p><a href="url"><img src="/data/examples/Interpolation/3_balanced.png" align="left" height="333" ></a></p>
-<p><a href="url"><img src="/data/examples/style.jpg" align="left" height="333" ></a></p>
+<p><a href="url"><img src="/data/examples/content.jpg" align="left" height="256" ></a> <a href="url"><img src="/data/examples/Interpolation/3_balanced.png" align="left" height="256" ></a> <a href="url"><img src="/data/examples/style.jpg" align="left" height="256" ></a></p>
+
+<br>
 
 <p>A photo (left) is transfered into a painting (right) using Picasso's self portrait 1907 (middle) as the reference style. Notice important facial features, such as eyes and nose, are very similar in the middle and the right images</p>
 
