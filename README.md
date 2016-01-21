@@ -5,6 +5,10 @@ This algorithm is for
 * un-guided image synthesis (for example, classical texture synthesis)
 * guided image synthesis (for example, transfer the style between different images)
 
+# Example
+* un-guided image synthesis
+
+
 # Setup
 
 This code is based on Torch. It has only been tested on Mac and Ubuntu.
