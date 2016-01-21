@@ -7,17 +7,12 @@ This algorithm is for
 
 # Example
 * guided image synthesis
-<p><a href="url"><img src="/data/examples/content.jpg" align="left" height="256" ></a> <a href="url"><img src="/data/examples/Interpolation/3_balanced.png" align="left" height="256" ></a> <a href="url"><img src="/data/examples/style.jpg" align="left" height="256" ></a></p>
 
-<br>
+<p><a href="/data/examples/content.jpg" target="_blank"><img src="/data/examples/content.jpg" height="250px" style="max-width:100%;"></a>
+<a href="/data/examples/Interpolation/3_balanced.png" target="_blank"><img src="/data/examples/Interpolation/3_balanced.png" height="250px" style="max-width:100%;"></a>
+<a href="/data/examples/style.jpg" target="_blank"><img src="/data/examples/style.jpg" height="250px" style="max-width:100%;"></a></p>
 
 <p>A photo (left) is transfered into a painting (right) using Picasso's self portrait 1907 (middle) as the reference style. Notice important facial features, such as eyes and nose, are very similar in the middle and the right images</p>
-
-
-<p><a href="url"><img src="/data/content/1.jpg" align="left" height="250" ></a></p>
-<p><a href="url"><img src="/data/style/1.jpg" align="left" height="250" ></a></p>
-<p><a href="url"><img src="/data/examples/0_to_0.png" align="left" height="250" ></a></p>
-<p><a href="url"><img src="/data/examples/1_to_1.png" align="left" height="250" ></a></p>
 
 # Setup
 This code is based on Torch. It has only been tested on Mac and Ubuntu.
