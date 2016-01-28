@@ -18,7 +18,6 @@ function mylbfgs(opfunc, x, config, state, mask)
 
    state.funcEval = state.funcEval or 0
    state.nIter = state.nIter or 0
-   print(state.nIter)
    -- verbose function
    local function verbose(...)
       if isverbose then print('<mylbfgs> ', ...) end
@@ -33,9 +32,7 @@ function mylbfgs(opfunc, x, config, state, mask)
 
    -- evaluate initial f(x) and df/dx
    local f,g = opfunc(x)
-   g:cmul(mask) -- add by chris
-   local ddd = g:reshape(x:size()[1], x:size()[2], x:size()[3])
-   print(ddd[{{1, 1}, {1, 1}, {1, 8}}])   
+   g:cmul(mask) -- add by chris 
    local f_hist = {f}
    local currentFuncEval = 1
    state.funcEval = state.funcEval + 1
