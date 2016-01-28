@@ -1,11 +1,14 @@
 # CNNMRF
-This is the torch implementation for paper "Combining Markov Random Fields and Convolutional Neural Networks for Image Synthesis"
+This is the torch implementation for paper "[Combining Markov Random Fields and Convolutional Neural Networks for Image Synthesis](http://arxiv.org/abs/1601.04589)"
 
 This algorithm is for
 * un-guided image synthesis (for example, classical texture synthesis)
 * guided image synthesis (for example, transfer the style between different images)
 
-# Example
+# Hardware
+* The algorithm requires a dedicate GPU. We provid two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
+* 
+# Examples
 * guided image synthesis
 
 <p><a href="/data/examples/content.jpg" target="_blank"><img src="/data/examples/content.jpg" height="320px" style="max-width:100%;"></a>
@@ -57,9 +60,6 @@ We use the the original VGG-19 model. You can find the download script at [Neura
 * The content/style images are located in the folders "data/content" and "data/style" respectively. 
 * Results are located in the folder "data/result/trans/MRF"
 * Parameters are defined & explained in "run_trans.lua".
-
-# Hardware
-* The algorithm requires a dedicate GPU. We provid two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
 
 # Acknowledgement
 * This work is inspired and closely related to the paper: [A Neural Algorithm of Artistic Style](http://arxiv.org/abs/1508.06576) by Leon A. Gatys, Alexander S. Ecker, and Matthias Bethge. The key difference between their method and our method is the different "style" constraints: While Gatys et al used a global constraint for non-photorealistic synthesis, we use a local constraint which works for both non-photorealistic and photorealistic synthesis. See our paper for more details.
