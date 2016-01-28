@@ -7,7 +7,8 @@ This algorithm is for
 
 # Hardware
 * The algorithm requires a dedicate GPU. We provid two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
-* 
+
+
 # Examples
 * guided image synthesis
 
