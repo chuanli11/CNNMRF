@@ -1,52 +1,60 @@
 local MRFMM, parent = torch.class('nn.MRFMM', 'nn.Module')
 
-function MRFMM:__init(weight, nInputPlane, nOutputPlane, kW, kH, dW, dH, padW, padH, strength, threshold_conf, gpu, mrf_num_x, mrf_num_y)
+function MRFMM:__init()
    parent.__init(self)
-   
-   dW = dW or 1
-   dH = dH or 1
-
-   self.nInputPlane = nInputPlane
-   self.nOutputPlane = nOutputPlane
-   self.kW = kW
-   self.kH = kH
-
-   self.dW = dW
-   self.dH = dH
-   self.padW = padW or 0
-   self.padH = padH or self.padW
-   self.gpu = gpu
-   self.weight_all = weight:clone() -- insteresting, has to use clone otherwise the result is inconsistent with cpu
-   self.weight_reshapemag = torch.Tensor(self.nOutputPlane, self.nInputPlane, self.kH, self.kW)
-   
-   if self.gpu >= 0 then
-     self.weight_reshapemag = self.weight_reshapemag:cuda()
-   end
-
-   for i_w = 1, self.nOutputPlane do
-     self.weight_reshapemag[i_w] = self.weight_all[{{i_w, i_w}, {1, self.weight_all:size()[2]}}]:reshape(self.nInputPlane, self.kH, self.kW)
-   end
-   self.weight_reshapemag = self.weight_reshapemag * (self.nInputPlane * self.kH * self.kW)
-
-   self.bias = torch.Tensor(nOutputPlane):fill(0)
-   self.gradWeight = torch.Tensor(nOutputPlane, nInputPlane*kH*kW)
-   self.gradBias = torch.Tensor(nOutputPlane)
-
-   self.finput = torch.Tensor()
-   self.fgradInput = torch.Tensor()
-   
-   self.strength = strength
-   self.threshold_conf = threshold_conf
-   self.weight_norm = torch.sqrt(torch.sum(torch.cmul(self.weight_all, self.weight_all), 2)):reshape(self.weight_all:size()[1], 1, 1)
-
-   self.gradMRF = nil
-
-   self.max_response = nil
-   self.max_id = nil
-
-   self.mrf_num_x = mrf_num_x
-   self.mrf_num_y = mrf_num_y
 end
+
+function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, dW, dH, threshold_conf, strength, gpu_chunck_size_1, gpu_chunck_size_2)
+  self.target_mrf = target_mrf:clone()
+  self.target_mrfnorm = target_mrfnorm:clone()
+  self.source_x = source_x
+  self.source_y = source_y
+  self.input_size = input_size
+  self.nInputPlane = nInputPlane
+  self.nOutputPlane = nOutputPlane
+  self.kW = kW
+  self.kH = kH
+  self.dW = dW
+  self.dH = dH
+  self.threshold_conf = threshold_conf
+  self.strength = strength
+  self.padW = padW or 0
+  self.padH = padH or self.padW
+  self.bias = torch.Tensor(nOutputPlane):fill(0)
+  self.bias = self.bias:cuda()
+  self.gradTO = torch.Tensor(input_size[1], input_size[2], input_size[3])
+  self.gradTO_confident = torch.Tensor(input_size[2], input_size[3])
+  self.response = torch.Tensor(response_size[1], response_size[2], response_size[3]) 
+  self.mode = mode -- memory or speed
+  self.gpu_chunck_size_1 = gpu_chunck_size_1
+  self.gpu_chunck_size_2 = gpu_chunck_size_2
+  self.tensor_target_mrfnorm = torch.repeatTensor(target_mrfnorm, 1, self.gpu_chunck_size_2, input_size[3] - (kW - 1))
+  
+  if self.mode == 'speed' then 
+      self.target_mrf = self.target_mrf:cuda()
+      self.target_mrfnorm = self.target_mrfnorm:cuda()
+      self.tensor_target_mrfnorm = self.tensor_target_mrfnorm:cuda()
+      self.gradTO = self.gradTO:cuda()
+      self.gradTO_confident = self.gradTO_confident:cuda()
+      self.response = self.response:cuda()
+  end
+
+  -- print('***********************************')
+  -- print('mrf layer: ')
+  -- print('***********************************')
+  -- print(self.target_mrf:size())
+  -- print(self.tensor_target_mrf:size())
+  -- print(self.tensor_target_mrfnorm:size())
+  -- print(self.source_x)
+  -- print(self.source_y)
+  -- print(self.nInputPlane)
+  -- print(self.nOutputPlane)  
+  -- print(self.kW)
+  -- print(self.kH)
+  -- print(self.strength)
+  -- print(self.mode)
+end
+
 
 local function makeContiguous(self, input, gradOutput)
    if not input:isContiguous() then
@@ -66,126 +74,121 @@ local function makeContiguous(self, input, gradOutput)
 end
 
 function MRFMM:updateOutput(input)
-  local timer_ALL = torch.Timer()
-
-   -- backward compatibility
-   if self.padding then
-      self.padW = self.padding
-      self.padH = self.padding
-      self.padding = nil
-   end  
-
-  input = makeContiguous(self, input)
-
-  -- -- compute mrf of input 
-  local timer_computemrf = torch.Timer()
-  local t_mrf_input, mrf_input, coord_syn_x, coord_syn_y = computeMRF(input, self.kW, self.dW, self.gpu) 
-  local t_computemrf = timer_computemrf:time().real
-
-  local mrf_norm = torch.sqrt(torch.sum(torch.cmul(mrf_input, mrf_input), 2)):reshape(1, coord_syn_y:nElement(), coord_syn_x:nElement())
-  local tensor_mrf_norm = torch.repeatTensor(mrf_norm, self.nOutputPlane, 1, 1) 
-  if self.gpu >= 0 then
-    tensor_mrf_norm = tensor_mrf_norm:cuda()
-  end
-  local tensor_weight_norm = torch.repeatTensor(self.weight_norm, 1, coord_syn_y:nElement(), coord_syn_x:nElement()) 
-
-  local response = torch.Tensor(self.nOutputPlane, coord_syn_y:nElement(), coord_syn_x:nElement()) 
-  if self.gpu >= 0 then
-    response = response:cuda()
-  end
-
-  -- hacked up for memory safety
-  local nOutputPlane_all = self.nOutputPlane
-  local nOutputPlane_chunk = 512
-
-  -- split all filters into chuncks
-  local num_chunk = math.ceil(nOutputPlane_all / nOutputPlane_chunk) 
-  for i_chunk = 1, num_chunk do
-    -- processing each chunck
-    local i_start = (i_chunk - 1) * nOutputPlane_chunk + 1
-    local i_end = math.min(i_start + nOutputPlane_chunk - 1, nOutputPlane_all)
-    self.weight = self.weight_all[{{i_start, i_end}, {1, self.weight_all:size()[2]}}]:clone()
-    self.nOutputPlane = i_end - i_start + 1
-    response[{{i_start, i_end}, {1, response:size()[2]}, {1, response:size()[3]}}] = input.nn.SpatialConvolutionMM_updateOutput(self, input)
-  end
-
-  if self.gpu >= 0 then
-  else
-    response = response:float()
-    tensor_weight_norm = tensor_weight_norm:float()
-  end
-
-  response = response:cdiv(tensor_mrf_norm)
-  response = response:cdiv(tensor_weight_norm)
-
-  self.max_response, self.max_id = torch.max(response, 1)
-
-  local timer_reconstruct = torch.Timer()
-
-  self.gradMRF = input:clone() * 0
-
-  -- least square 
-  self.gradMRF_confident = input[1]:clone():fill(0) + 1e-10
-  local i_mrf = 0
-  for i_row = 1, coord_syn_y:nElement() do
-  local i_row_syn = coord_syn_y[i_row]
-    for i_col = 1, coord_syn_x:nElement() do 
-      local i_col_syn = coord_syn_x[i_col]
-      i_mrf = i_mrf + 1
-      if self.max_response[1][i_row][i_col] >= self.threshold_conf then
-        self.gradMRF[{{1, self.nInputPlane}, {i_row_syn, i_row_syn + self.kH - 1}, {i_col_syn, i_col_syn + self.kW - 1}}]:add(self.weight_reshapemag[self.max_id[1][i_row][i_col]] - t_mrf_input[i_mrf])
-        self.gradMRF_confident[{{i_row_syn, i_row_syn + self.kH - 1}, {i_col_syn, i_col_syn + self.kW - 1}}]:add(1)    
-      end
-    end
-  end  
-  self.gradMRF:cdiv(torch.repeatTensor(self.gradMRF_confident, self.nInputPlane, 1, 1))
-
-  local t_reconstruct = timer_reconstruct:time().real
-
-  self.nOutputPlane = nOutputPlane_all
-
-  self.output = input:clone()
-  local t_all = timer_ALL:time().real
-  print('t_all: ' .. t_all .. ' mrf: ' .. t_computemrf/t_all .. ' rec: ' .. t_reconstruct/t_all)
-
-  t_mrf_input = nil
-  mrf_input = nil
-  mrf_norm = nil
-  tensor_mrf_norm = nil
-  tensor_weight_norm = nil
-  response = nil
-  collectgarbage()
-
-  return self.output
+    input = makeContiguous(self, input)
+    self.output = input:clone()
+    return self.output
 end
 
 function MRFMM:updateGradInput(input, gradOutput)
 
-   if self.gradInput then
-      input, self.target = makeContiguous(self, input, self.target)      
-      if gradOutput:size()[1] == input:size()[1] then
-        self.gradInput = gradOutput:clone() + self.gradMRF * self.strength * (-1)
+  -- local timer_ALL = torch.Timer()
+
+  -- local timer_PREP = torch.Timer()
+  input = makeContiguous(self, input)
+  self.gradTO = self.gradTO:fill(0)
+  self.gradTO_confident = self.gradTO_confident:fill(0) + 1e-10
+  local source_mrf, x, y = computeMRFnoTensor(input:float(), self.kW, 1, self.mode == 'memory' and -1 or 1) 
+  local source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
+  local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1) 
+  tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
+  local nOutputPlane_all = self.nOutputPlane -- hacked for memory safety
+  local num_chunk = math.ceil(nOutputPlane_all / self.gpu_chunck_size_1) 
+  -- local t_prep = timer_PREP:time().real
+
+  -- local timer_MATCH = torch.Timer()
+  -- local t_io = 0
+  -- local t_conv = 0
+  -- local t_clone = 0
+  for i_chunk = 1, num_chunk do
+    local i_start = (i_chunk - 1) * self.gpu_chunck_size_1 + 1
+    local i_end = math.min(i_start + self.gpu_chunck_size_1 - 1, nOutputPlane_all)
+
+    -- local timer_CLONE = torch.Timer()
+    self.weight = self.target_mrf[{{i_start, i_end}, {1, self.target_mrf:size()[2]}}]
+    -- t_clone = t_clone + timer_CLONE:time().real
+
+    if self.mode == 'memory' then
+      -- local timer_IO = torch.Timer()
+      self.weight = self.weight:cuda()
+      -- t_io = t_io + timer_IO:time().real
+    end
+    self.nOutputPlane = i_end - i_start + 1
+
+    -- local timer_CONV = torch.Timer()
+    local temp = input.nn.SpatialConvolutionMM_updateOutput(self, input)
+    -- t_conv = t_conv + timer_CONV:time().real
+
+    -- normalize w.r.t source_mrfnorm
+    if i_chunk < num_chunk then
+        temp = temp:cdiv(tensor_source_mrfnorm)
+    else
+        temp = temp:cdiv(tensor_source_mrfnorm[{{1, i_end - i_start + 1}, {1, temp:size()[2]}, {1, temp:size()[3]}}])
+    end
+
+    if self.mode == 'memory' then 
+      -- local timer_IO = torch.Timer()
+      temp = temp:float()
+      -- t_io = t_io + timer_IO:time().real
+    end
+    self.response[{{i_start, i_end}, {1, self.response:size()[2]}, {1, self.response:size()[3]}}] = temp
+  end
+
+  local num_chunk_2 = math.ceil(self.response:size()[2] / self.gpu_chunck_size_2) 
+  for i_chunk_2 = 1, num_chunk_2 do
+    local i_start = (i_chunk_2 - 1) * self.gpu_chunck_size_2 + 1
+    local i_end = math.min(i_start + self.gpu_chunck_size_2 - 1, self.response:size()[2])
+      if i_chunk_2 < num_chunk_2 then
+        self.response[{{1, self.response:size()[1]}, {i_start, i_end}, {1, self.response:size()[3]}}] = self.response[{{1, self.response:size()[1]}, {i_start, i_end}, {1, self.response:size()[3]}}]:cdiv(self.tensor_target_mrfnorm)
       else
-        self.gradInput = self.gradMRF * self.strength * (-1)
+        self.response[{{1, self.response:size()[1]}, {i_start, i_end}, {1, self.response:size()[3]}}] = self.response[{{1, self.response:size()[1]}, {i_start, i_end}, {1, self.response:size()[3]}}]:cdiv(self.tensor_target_mrfnorm[{{1, self.response:size()[1]}, {1, i_end - i_start + 1}, {1, self.response:size()[3]}}])
       end
-      return self.gradInput
-   end
+  end
+
+  -- local timer_AFT = torch.Timer()
+  max_response, max_id = torch.max(self.response, 1)
+  -- local t_aft = timer_AFT:time().real
+
+  -- local t_match = timer_MATCH:time().real
+
+  -- local timer_SYN = torch.Timer()
+  source_mrf = source_mrf:resize(source_mrf:size()[1], self.nInputPlane, self.kW, self.kH)
+  self.target_mrf = self.target_mrf:resize(self.target_mrf:size()[1], self.nInputPlane, self.kW, self.kH)
+  for i_patch = 1, self.source_x:nElement() do
+      local sel_response = max_response[1][self.source_y[i_patch]][self.source_x[i_patch]]
+      if sel_response >= self.threshold_conf then
+        local sel_idx = max_id[1][self.source_y[i_patch]][self.source_x[i_patch]]
+        local source_idx = (self.source_y[i_patch] - 1) * x:nElement() + self.source_x[i_patch]        
+        self.gradTO[{{1, self.nInputPlane}, {self.source_y[i_patch], self.source_y[i_patch] + self.kH - 1}, {self.source_x[i_patch], self.source_x[i_patch] + self.kW - 1}}]:add(self.target_mrf[sel_idx] - source_mrf[source_idx])
+        self.gradTO_confident[{{self.source_y[i_patch], self.source_y[i_patch] + self.kH - 1}, {self.source_x[i_patch], self.source_x[i_patch] + self.kW - 1}}]:add(1)    
+      end
+  end
+  self.gradTO:cdiv(torch.repeatTensor(self.gradTO_confident, self.nInputPlane, 1, 1))
+  self.nOutputPlane = nOutputPlane_all
+  self.target_mrf = self.target_mrf:resize(self.target_mrf:size()[1], self.nInputPlane * self.kW * self.kH)
+  -- local t_syn = timer_SYN:time().real
+
+  if gradOutput:size()[1] == input:size()[1] then
+    self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
+  else
+    self.gradInput = self.gradTO * self.strength * (-1)
+  end
+
+  -- local t_all = timer_ALL:time().real
+  -- print('t_all:  ' .. t_all .. ', t_prep: ' .. t_prep .. ', t_match: ' .. t_match .. ', t_io: ' .. t_io .. ', t_conv: ' .. t_conv .. ', t_aft: ' .. t_aft .. ', t_syn: ' .. t_syn) 
+  -- print('t_all:  ' .. t_all .. ', t_prep: ' .. t_prep/t_all .. ', t_match: ' .. t_match/t_all .. ', t_io: ' .. t_io/t_all .. ', t_conv: ' .. t_conv/t_all .. ', t_aft: ' .. t_aft/t_all .. ', t_syn: ' .. t_syn/t_all) 
+  -- print('**************************************************************************************************') 
+  -- print('t_all:  ' .. t_all .. ', t_clone: ' .. t_clone/t_match .. ', t_io: ' .. t_io/t_match .. ', t_conv: ' .. t_conv/t_match .. ', t_aft: ' .. t_aft/t_match) 
+  -- print('t_all:  ' .. t_all .. ', t_clone: ' .. t_clone .. ', t_io: ' .. t_io .. ', t_conv: ' .. t_conv .. ', t_aft: ' .. t_aft) 
+  -- tensor_source_mrf = nil
+  source_mrf = nil
+  source_mrfnorm = nil
+  tensor_source_mrfnorm = nil
+  collectgarbage()
+  return self.gradInput
 end
 
 function MRFMM:type(type)
    self.finput = torch.Tensor()
    self.fgradInput = torch.Tensor()
    return parent.type(self,type)
-end
-
-function MRFMM:__tostring__()
-   local s = string.format('%s(%d -> %d, %dx%d', torch.type(self),
-         self.nInputPlane, self.nOutputPlane, self.kW, self.kH)
-   if self.dW ~= 1 or self.dH ~= 1 or self.padW ~= 0 or self.padH ~= 0 then
-     s = s .. string.format(', %d,%d', self.dW, self.dH)
-   end
-   if (self.padW or self.padH) and (self.padW ~= 0 or self.padH ~= 0) then
-     s = s .. ', ' .. self.padW .. ',' .. self.padH
-   end
-   return s .. ')'
 end

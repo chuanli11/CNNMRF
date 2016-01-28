@@ -1,1 +1,0 @@
-This is the folder for storing style transfering results.

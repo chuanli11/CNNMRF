@@ -14,9 +14,9 @@ function ContentLoss:updateOutput(input)
    if input:nElement() == self.target:nElement() then
       self.loss = self.crit:forward(input, self.target) * self.strength
    else
-      print(input:size())
-      print(self.target:size())    
-      print('WARNING: Skipping content loss')
+      -- print(input:size())
+      -- print(self.target:size())    
+      -- print('WARNING: Skipping content loss')
    end
    self.output = input
    return self.output
@@ -31,4 +31,12 @@ function ContentLoss:updateGradInput(input, gradOutput)
    self.gradInput:mul(self.strength)
    self.gradInput:add(gradOutput) 
    return self.gradInput
+end
+
+function ContentLoss:update(other)
+   self.strength = other.strength
+   self.target = other.target
+   self.normalize = other.normalize
+   self.loss = other.loss
+   self.crit = other.crit
 end

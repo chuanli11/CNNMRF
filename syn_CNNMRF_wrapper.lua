@@ -6,495 +6,434 @@ require 'loadcaffe'
 
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
 
-local function run_test(content_name, style_name, ini_method, num_iter, mrf_layers, mrf_patch_size, mrf_num_rotation, mrf_num_scale, content_weight, mrf_layer_conf_threshold, mrf_weights)
+local function run_test(content_name, style_name, ini_method, max_size, scaler, num_res, num_iter, mrf_layers, mrf_weight, mrf_patch_size, mrf_num_rotation, mrf_num_scale, mrf_sample_stride, mrf_synthesis_stride, mrf_confidence_threshold, tv_weight, mode,  gpu_chunck_size_1, gpu_chunck_size_2)
+  -- local clock = os.clock
+  -- function sleep(n)  -- seconds
+  --   local t0 = clock()
+  --   while clock() - t0 <= n do end
+  -- end
+
+  local timer_TEST = torch.Timer()
+
   local flag_state = 1
 
   local cmd = torch.CmdLine()
+  local params = cmd:parse(arg)
+
+  -- externally set paramters
+  params.content_name = content_name
+  params.style_name = style_name
+  params.ini_method = ini_method  
+  params.max_size = max_size or 384
+  params.scaler = scaler or 2
+  params.num_res = num_res or 3
+  params.num_iter = num_iter or {100, 100, 100}
+  params.mrf_layers = mrf_layers or {12, 21}
+  params.mrf_weight = mrf_weight or {1e-4, 1e-4}
+  params.mrf_patch_size = mrf_patch_size or {3, 3}
+  params.target_num_rotation = mrf_num_rotation or 0
+  params.target_num_scale = mrf_num_scale or 0
+  params.target_sample_stride = mrf_sample_stride or {2, 2}
+  params.source_sample_stride = mrf_synthesis_stride or {2, 2}
+  params.mrf_confidence_threshold = mrf_confidence_threshold or {0, 0}
+  params.tv_weight = tv_weight or 1e-3
+
+  params.mode = mode or 'speed'
+  params.gpu_chunck_size_1 = gpu_chunck_size_1 or 256
+  params.gpu_chunck_size_2 = gpu_chunck_size_2 or 16
+  
+  -- fixed parameters
+  params.target_step_rotation = math.pi/24
+  params.target_step_scale = 1.05
+  os.execute('mkdir ' .. 'data/result/')
+  os.execute('mkdir ' .. 'data/result/freesyn/')
+  os.execute('mkdir ' .. 'data/result/freesyn/MRF/')  
+  params.output_folder = 'data/result/freesyn/MRF/' .. params.content_name .. '_TO_' .. params.style_name
+  params.proto_file = 'data/models/VGG_ILSVRC_19_layers_deploy.prototxt'
+  params.model_file = 'data/models/VGG_ILSVRC_19_layers.caffemodel'
+  params.gpu = 0
+  params.backend = 'cudnn'
+  params.nCorrection = 25
+  params.print_iter = 10
+  params.save_iter = 10
+  params.gpu_chunck_size_1 = 32
+  params.gpu_chunck_size_2 = 2
+
+  os.execute('mkdir ' .. params.output_folder)
 
   local function main(params)
-      local timer_main = torch.Timer()
+    local net = nn.Sequential()
+    local i_net_layer = 0
+    local num_calls = 0
+    local next_mrf_idx = 1
+    local mrf_losses = {}
+    local mrf_layers = {}
+    local i_mrf_layer = 0
+    local input_image
+    local output_image
+    local cur_res
+    local mrf_layers_pretrained = params.mrf_layers
 
-      local ini_block_caffe = nil
-      local coord_block_y = nil
-      local coord_block_x = nil
-      local content_layers_pretrained = params.content_layers_pretrained
-      local style_layers_pretrained = params.style_layers_pretrained
-      local style_layer_weights = params.style_layer_weights
-      local mrf_layers_pretrained = params.mrf_layers_pretrained
-      local mrf_layer_weights = params.mrf_layer_weights
-      local mrf_layer_patch_size = params.mrf_layer_patch_size
-      local mrf_layer_sample_stride = params.mrf_layer_sample_stride
-      local mrf_layer_synthesis_stride = params.mrf_layer_synthesis_stride
-      local mrf_layer_confidence_threshold = params.mrf_layer_confidence_threshold
-      local content_layers = {}
-      local i_content_layer = 0
-      local next_content_idx = 1
-      local style_layers = {}
-      local i_style_layer = 0
-      local next_style_idx = 1
-      local mrf_layers = {}
-      local i_mrf_layer = 0
-      local next_mrf_idx = 1
-      local content_losses, style_losses = {}, {}
-      local input_caffe = nil
-      local output_caffe = nil
-      local output = nil 
-      local num_calls = 0
-      local y = nil
-      local dy = nil
-      local mask = nil
-      local mask_weight = nil
+    -----------------------------------------------------------------------------------
+    -- read images
+    -----------------------------------------------------------------------------------
+    local source_image = image.load('data/content/' .. params.content_name  .. '.jpg', 3)
+    local target_image = image.load('data/style/' .. params.style_name  .. '.jpg', 3)
 
-      if params.gpu >= 0 then
-        require 'cutorch'
-        require 'cunn'
-        cutorch.setDevice(params.gpu + 1)
-      else
-        params.backend = 'nn-cpu'
-      end
+    source_image = image.scale(source_image, params.max_size, 'bilinear')
+    target_image = image.scale(target_image, math.floor(params.max_size / params.scaler), 'bilinear')
 
-      if params.backend == 'cudnn' then
-        require 'cudnn'
-      end
-      
-      local cnn = loadcaffe.load(params.proto_file, params.model_file, params.backend):float()
+    local render_height = source_image:size()[2]
+    local render_width = source_image:size()[3]
+    source_image_caffe = preprocess(source_image):float()
+    target_image_caffe = preprocess(target_image):float()
 
-      if params.gpu >= 0 then
-        cnn:cuda()
-      end
+    local pyramid_source_image_caffe = {}
+    for i_res = 1, params.num_res do
+      pyramid_source_image_caffe[i_res] = image.scale(source_image_caffe, math.ceil(source_image:size()[3] * math.pow(0.5, params.num_res - i_res)), math.ceil(source_image:size()[2] * math.pow(0.5, params.num_res - i_res)), 'bilinear')
+    end
 
-      -----------------------------------------------------
-      print('read & scale content and style images')
-      -----------------------------------------------------
-      local content_image = image.load(params.content_image, 3)
-      content_image = image.scale(content_image, params.image_size, 'bilinear')
-      local content_image_caffe = preprocess(content_image):float()
-      print('content_image size: ')
-      print(content_image:size())
+    local pyramid_target_image_caffe = {}
+    for i_res = 1, params.num_res do
+      pyramid_target_image_caffe[i_res] = image.scale(target_image_caffe, math.ceil(target_image:size()[3] * math.pow(0.5, params.num_res - i_res)), math.ceil(target_image:size()[2] * math.pow(0.5, params.num_res - i_res)), 'bilinear')
+    end
 
-      local style_image = image.load(params.style_image, 3)
-      style_image = image.scale(style_image, params.style_size, 'bilinear')
-      local style_image_caffe = preprocess(style_image):float()
-      print('style_image size: ')
-      print(style_image:size())
-
-      local mrf_image = image.load(params.mrf_image, 3)
-      mrf_image = image.scale(mrf_image, params.style_size, 'bilinear')
-      print('mrf_image size: ')
-      print(mrf_image:size())
-
-      local ini_image = image.load(params.ini_image, 3)
-      ini_image = image.scale(ini_image, content_image:size()[3], content_image:size()[2], 'bilinear')
-      local ini_image_caffe = preprocess(ini_image):float()
-      print('ini_image size: ')
-      print(ini_image:size())   
-
-      -- local content_image = image.load(params.content_image, 3)
-      -- local new_height = (params.image_size / content_image:size()[2]) * content_image:size()[3]
-      -- content_image = image.scale(content_image, (params.image_size / content_image:size()[2]) * content_image:size()[3], 'bilinear')
-      -- local content_image_caffe = preprocess(content_image):float()
-      -- print('content_image size: ')
-      -- print(content_image:size())
-
-      -- local style_image = image.load(params.style_image, 3)
-      -- style_image = image.scale(style_image, (params.style_size / style_image:size()[2]) * style_image:size()[3], 'bilinear')
-      -- local style_image_caffe = preprocess(style_image):float()
-      -- print('style_image size: ')
-      -- print(style_image:size())
-
-      -- local mrf_image = image.load(params.mrf_image, 3)
-      -- mrf_image = image.scale(mrf_image, (params.style_size / style_image:size()[2]) * style_image:size()[3], 'bilinear')
-      -- print('mrf_image size: ')
-      -- print(mrf_image:size())
-
-      -- local ini_image = image.load(params.ini_image, 3)
-      -- ini_image = image.scale(ini_image, content_image:size()[3], content_image:size()[2], 'bilinear')
-      -- local ini_image_caffe = preprocess(ini_image):float()
-      -- print('ini_image size: ')
-      -- print(ini_image:size())
-
-      if params.gpu >= 0 then
-        content_image_caffe = content_image_caffe:cuda()
-        style_image_caffe = style_image_caffe:cuda()
-        ini_image_caffe = ini_image_caffe:cuda()    
-      end
-
-      if params.content_block_flag == 1 then
-        coord_block_x, coord_block_y = computegrid(content_image_caffe:size()[3], content_image_caffe:size()[2], params.content_block_size, params.content_block_stride, 1)
-        print('coord_block_y: ')
-        print(coord_block_y)  
-        print('coord_block_x: ')
-        print(coord_block_x)  
-        ini_block_caffe = torch.randn(3, params.content_block_size, params.content_block_size):float():mul(0.001)
-        if params.gpu >= 0 then
-          ini_block_caffe = ini_block_caffe:cuda()
-        end
-      end
-
-      -----------------------------------------------------
-      print('Build network')
-      -----------------------------------------------------
-      local i_net_layer = 0
-      local net = nn.Sequential()
-   
-      --------------------------------------------------------------------------------------------------------
-      -- local function for adding a mrf layer, with image rotation andn scaling
-      --------------------------------------------------------------------------------------------------------
-      local function add_layer_mrf()
-        
-
+    -- --------------------------------------------------------------------------------------------------------
+    -- -- local function for adding a mrf layer, with image rotation andn scaling
+    -- --------------------------------------------------------------------------------------------------------
+    local function add_mrf()
+        local mrf_module = nn.MRFMM()
         i_mrf_layer = i_mrf_layer + 1
-        table.insert(mrf_layers, i_mrf_layer, i_net_layer)
-
-        -- do rotation 
-        local filters_mrf = torch.Tensor(0, 0)
-        local flag_first = 1
-        for i_r = -params.mrf_num_rotation, params.mrf_num_rotation do
-          local alpha = params.mrf_step_rotation * i_r 
-          local min_x, min_y, max_x, max_y = computeBB(mrf_image:size()[3], mrf_image:size()[2], alpha)
-          local mrf_image_rt = image.rotate(mrf_image, alpha, 'bilinear')
-          mrf_image_rt = mrf_image_rt[{{1, mrf_image_rt:size()[1]}, {min_y, max_y}, {min_x, max_x}}]
-
-          for i_s = -params.mrf_num_scale, params.mrf_num_scale do
-            local max_sz = math.floor(math.max(mrf_image_rt:size()[2], mrf_image_rt:size()[3]) * torch.pow(params.mrf_step_scale, i_s))
-            local mrf_image_rt_s = image.scale(mrf_image_rt, max_sz, 'bilinear')
-            local mrf_image_caffe_rt = preprocess(mrf_image_rt_s):float()
-            if params.gpu >= 0 then
-              mrf_image_caffe_rt = mrf_image_caffe_rt:cuda()
-            end
-            -- forward the mrf image
-            local target_features = net:forward(mrf_image_caffe_rt):clone()
-
-            print(target_features:size())
-            print(mrf_layer_patch_size[next_mrf_idx])
-            if mrf_layer_patch_size[next_mrf_idx] > target_features:size()[2] or mrf_layer_patch_size[next_mrf_idx] > target_features:size()[3] then 
-              return false
-            end
-
-            -- design a bunch of filters
-            local t_filters_mrf_, filters_mrf_, coord_x_, coord_y_ = computeMRF(target_features,  mrf_layer_patch_size[next_mrf_idx],  mrf_layer_sample_stride[next_mrf_idx], params.gpu)
-            mrf_num_x = coord_x_:nElement()
-            mrf_num_y = coord_y_:nElement()
-
-            -- CL: scale the filter by number of entries in the filter. Otherwise the convlution result will overshoot
-            filters_mrf_ = filters_mrf_ * (1 / (mrf_layer_patch_size[next_mrf_idx] * mrf_layer_patch_size[next_mrf_idx] * target_features:size()[1]))
-            if flag_first == 1 then
-              filters_mrf = filters_mrf_:float():clone()
-              flag_first = 0
-            else
-              filters_mrf = torch.cat(filters_mrf, filters_mrf_:float(), 1)
-            end
-            target_features = nil
-            mrf_image_caffe_rt = nil             
-            filters_mrf_ = nil
-            collectgarbage()
-          end -- for scale
-        end -- for rotation     
-
-        if params.gpu >= 0 then
-          filters_mrf = filters_mrf:cuda()
-        end
-
-        -- make a mrf layer
-        local nInputPlane = filters_mrf:size()[2] / (mrf_layer_patch_size[next_mrf_idx] * mrf_layer_patch_size[next_mrf_idx])
-        local nOutputPlane = filters_mrf:size()[1]
-        local kW = mrf_layer_patch_size[next_mrf_idx]
-        local kH = mrf_layer_patch_size[next_mrf_idx]
-        local dW = mrf_layer_synthesis_stride[next_mrf_idx]
-        local dH = mrf_layer_synthesis_stride[next_mrf_idx]
-
-        local mrf_module = nn.MRFMM(filters_mrf, nInputPlane, nOutputPlane, kW, kH, dW, dH, 0, 0, mrf_layer_weights[next_mrf_idx], mrf_layer_confidence_threshold[next_mrf_idx], params.gpu, mrf_num_x, mrf_num_y)
-        filters_mrf = nil
-        collectgarbage()
+        i_net_layer = i_net_layer + 1
+        next_mrf_idx = next_mrf_idx + 1 
         if params.gpu >= 0 then
           mrf_module:cuda()
-        else
-          mrf_module:float()
         end
-        i_net_layer = i_net_layer + 1
         net:add(mrf_module)
-        next_mrf_idx = next_mrf_idx + 1 
-
+        table.insert(mrf_losses, mrf_module)
+        table.insert(mrf_layers, i_mrf_layer, i_net_layer)
         return true
+    end
 
+    local function build_mrf(id_mrf)
+      --------------------------------------------------------
+      -- deal with target
+      --------------------------------------------------------
+      target_images_caffe = {}
+      for i_r = -params.target_num_rotation, params.target_num_rotation do
+        local alpha = params.target_step_rotation * i_r 
+        local min_x, min_y, max_x, max_y = computeBB(pyramid_target_image_caffe[cur_res]:size()[3], pyramid_target_image_caffe[cur_res]:size()[2], alpha)
+        local target_image_rt_caffe = image.rotate(pyramid_target_image_caffe[cur_res], alpha, 'bilinear')
+        target_image_rt_caffe = target_image_rt_caffe[{{1, target_image_rt_caffe:size()[1]}, {min_y, max_y}, {min_x, max_x}}]
+
+        for i_s = -params.target_num_scale, params.target_num_scale do  
+          local max_sz = math.floor(math.max(target_image_rt_caffe:size()[2], target_image_rt_caffe:size()[3]) * torch.pow(params.target_step_scale, i_s))
+          local target_image_rt_s_caffe = image.scale(target_image_rt_caffe, max_sz, 'bilinear')
+          target_image_rt_s_caffe = target_image_rt_s_caffe:cuda()
+          table.insert(target_images_caffe, target_image_rt_s_caffe)
+        end
       end
 
-      --------------------------------------------------------------------------------------------------------
-      -- local function for adding a content layer
-      --------------------------------------------------------------------------------------------------------
-      local function add_layer_content()
-        i_content_layer = i_content_layer + 1
-        table.insert(content_layers, i_content_layer, i_net_layer)   
-        local target = nil
-        if params.content_block_flag == 1 then
-          target = net:forward(ini_block_caffe):clone() -- generate a fake block target 
+      -- compute the coordinates on the pixel layer
+      local target_x
+      local target_y
+      local target_x_per_image = {}
+      local target_y_per_image = {}
+      local target_imageid
+      -- print('*****************************************************')
+      -- print(string.format('build target mrf'));
+      -- print('*****************************************************')   
+      for i_image = 1, #target_images_caffe do
+        -- print(string.format('image %d, ', i_image))
+        net:forward(target_images_caffe[i_image])
+        local target_feature_map = net:get(mrf_layers[id_mrf] - 1).output:float()
+
+        if params.mrf_patch_size[id_mrf] > target_feature_map:size()[2] or params.mrf_patch_size[id_mrf] > target_feature_map:size()[3] then 
+          print('target_images is not big enough for patch')
+          print('target_images size: ')
+          print(target_feature_map:size())
+          print('patch size: ')
+          print(params.mrf_patch_size[id_mrf])
+          do return end
+        end 
+        local target_x_, target_y_ = drill_computeMRFfull(target_feature_map,  params.mrf_patch_size[id_mrf], params.target_sample_stride[id_mrf], -1) 
+
+
+        local x = torch.Tensor(target_x_:nElement() * target_y_:nElement())
+        local y = torch.Tensor(target_x_:nElement() * target_y_:nElement())
+        local target_imageid_ = torch.Tensor(target_x_:nElement() * target_y_:nElement()):fill(i_image)
+        local count = 1
+        for i_row = 1, target_y_:nElement() do
+          for i_col = 1, target_x_:nElement() do
+            x[count] = target_x_[i_col]
+            y[count] = target_y_[i_row]
+            count = count + 1
+          end
+        end
+        if i_image == 1 then
+          target_x = x:clone()
+          target_y = y:clone()
+          target_imageid = target_imageid_:clone()
         else
-          target = net:forward(content_image_caffe):clone() -- generate the content target using content image
+          target_x = torch.cat(target_x, x, 1)
+          target_y = torch.cat(target_y, y, 1)
+          target_imageid = torch.cat(target_imageid, target_imageid_, 1)
         end
-        local norm = params.normalize_gradients
-        local loss_module = nn.ContentLoss(params.content_weight, target, norm):float()
-        if params.gpu >= 0 then
-          loss_module:cuda()
-        end
-        i_net_layer = i_net_layer + 1
-        net:add(loss_module)
-        table.insert(content_losses, loss_module)
-        next_content_idx = next_content_idx + 1      
-      end
+        table.insert(target_x_per_image, x)
+        table.insert(target_y_per_image, y)  
+      end -- end for i_image = 1, #target_images do
 
-      --------------------------------------------------------------------------------------------------------
-      -- local function for adding a style layer
-      --------------------------------------------------------------------------------------------------------
-      local function add_layer_style()
-        i_style_layer = i_style_layer + 1
-        table.insert(style_layers, i_style_layer, i_net_layer)
-        local gram = GramMatrix():float()
-        if params.gpu >= 0 then
-          gram = gram:cuda()
-        end
-        local target_features = net:forward(style_image_caffe):clone()
-        local target = gram:forward(target_features)
-        target:div(target_features:nElement())
+      -- print('*****************************************************')
+      -- print(string.format('collect mrf'));
+      -- print('*****************************************************')  
+      
+      local num_channel_mrf = net:get(mrf_layers[id_mrf] - 1).output:size()[1]
+      local target_mrf = torch.Tensor(target_x:nElement(), num_channel_mrf * params.mrf_patch_size[id_mrf] * params.mrf_patch_size[id_mrf])
+      local tensor_target_mrf = torch.Tensor(target_x:nElement(), num_channel_mrf, params.mrf_patch_size[id_mrf], params.mrf_patch_size[id_mrf])
+      local count_mrf = 1
+      for i_image = 1, #target_images_caffe do
+        -- print(string.format('image %d, ', i_image));
+        net:forward(target_images_caffe[i_image])
+        -- sample mrf on mrf_layers
+        local tensor_target_mrf_, target_mrf_ = sampleMRFAndTensorfromLocation2(target_x_per_image[i_image], target_y_per_image[i_image], net:get(mrf_layers[id_mrf] - 1).output:float(), params.mrf_patch_size[id_mrf])        
+        target_mrf[{{count_mrf, count_mrf + target_mrf_:size()[1] - 1}, {1, target_mrf:size()[2]}}] = target_mrf_:clone()
+        tensor_target_mrf[{{count_mrf, count_mrf + target_mrf_:size()[1] - 1}, {1, tensor_target_mrf:size()[2]}, {1, tensor_target_mrf:size()[3]}, {1, tensor_target_mrf:size()[4]}}] = tensor_target_mrf_:clone()
+        count_mrf = count_mrf + target_mrf_:size()[1]
+        tensor_target_mrf_ = nil
+        target_mrf_ = nil
+        collectgarbage()
+      end --for i_image = 1, #target_images do
+      local target_mrfnorm = torch.sqrt(torch.sum(torch.cmul(target_mrf, target_mrf), 2)):resize(target_mrf:size()[1], 1, 1)
 
-        local weight = params.style_weight * style_layer_weights[next_style_idx]
-        local norm = params.normalize_gradients
-        local loss_module = nn.StyleLoss(weight, target, norm):float()
-        if params.gpu >= 0 then
-          loss_module:cuda()
-        end
-        i_net_layer = i_net_layer + 1
-        net:add(loss_module)
-        table.insert(style_losses, loss_module)
-        next_style_idx = next_style_idx + 1     
-      end
-
-      --------------------------------------------------------------------------------------------------------
-      -- local function for printing inter-mediate result
-      --------------------------------------------------------------------------------------------------------
-      local function maybe_print(t, loss)
-         local verbose = (params.print_iter > 0 and t % params.print_iter == 0)
-         if verbose then
-            print(string.format('Iteration %d / %d', t, params.num_iterations))
-            for i, loss_module in ipairs(style_losses) do
-               print(string.format('  Style %d loss: %f', i, loss_module.loss))
-            end
-         end
-      end
-
-      --------------------------------------------------------------------------------------------------------
-      -- local function for saving inter-mediate result
-      --------------------------------------------------------------------------------------------------------
-      local function maybe_save(t)
-         local should_save = params.save_iter > 0 and t % params.save_iter == 0
-         should_save = should_save or t == params.num_iterations
-         if should_save then
-            local disp = deprocess(input_caffe:float())
-            disp = image.minmax{tensor=disp, min=0, max=1}
-            disp = image.scale(disp, params.render_size, 'bilinear')
-            local filename = build_filename(params.output_image, t)
-            filename = params.output_folder .. '/' .. 'res_' .. string.format('%d', params.res) .. '_' .. filename
-            if t == params.num_iterations then
-               filename = params.output_image
-            end
-            image.save(filename, disp)
-         end
-      end
-
-      --------------------------------------------------------------------------------------------------------
-      -- local function for computing energy
-      --------------------------------------------------------------------------------------------------------
-      local function feval(x)
-         num_calls = num_calls + 1
-         net:forward(x)
-         local grad = net:backward(x, dy)
-         -- grad:cmul(mask)
-         -- print(grad)
-         local loss = 0
-         for _, mod in ipairs(content_losses) do
-            loss = loss + mod.loss
-         end
-         for _, mod in ipairs(style_losses) do
-            loss = loss + mod.loss
-         end
-         maybe_print(num_calls, loss)
-         maybe_save(num_calls)
-
-         collectgarbage()
-         -- optim.lbfgs expects a vector for gradients
-         return loss, grad:view(grad:nElement())
-      end
-
-      -----------------------------------------------------
-      -- add a tv layer
-      -----------------------------------------------------    
-      if params.tv_weight > 0 then
-        local tv_mod = nn.TVLoss(params.tv_weight):float()
-        if params.gpu >= 0 then
-          tv_mod:cuda()
-        end
-        i_net_layer = i_net_layer + 1
-        net:add(tv_mod)
-      end
-
-      ---------------------------------------------------
-      -- add a pixel based mrf layer if necessary
-      --------------------------------------------------- 
-      if #mrf_layers_pretrained > 0 then
-        if mrf_layers_pretrained[1] == 0 then
-          add_layer_mrf()
+      --------------------------------------------------------
+      -- process source
+      --------------------------------------------------------
+      -- print('*****************************************************')
+      -- print(string.format('process source image'));
+      -- print('*****************************************************')    
+      net:forward(pyramid_source_image_caffe[cur_res]:cuda()) 
+      local source_feature_map = net:get(mrf_layers[id_mrf] - 1).output:float()
+      if params.mrf_patch_size[id_mrf] > source_feature_map:size()[2] or params.mrf_patch_size[id_mrf] > source_feature_map:size()[3] then 
+        print('source_image_caffe is not big enough for patch')
+        print('source_image_caffe size: ')
+        print(source_feature_map:size())
+        print('patch size: ')
+        print(params.mrf_patch_size[id_mrf])
+        do return end
+      end 
+      local source_xgrid, source_ygrid = drill_computeMRFfull(source_feature_map:float(), params.mrf_patch_size[id_mrf], params.source_sample_stride[id_mrf], -1) 
+      local source_x = torch.Tensor(source_xgrid:nElement() * source_ygrid:nElement())
+      local source_y = torch.Tensor(source_xgrid:nElement() * source_ygrid:nElement())      
+      local count = 1
+      for i_row = 1, source_ygrid:nElement() do
+        for i_col = 1, source_xgrid:nElement() do
+          source_x[count] = source_xgrid[i_col]
+          source_y[count] = source_ygrid[i_row]
+          count = count + 1
         end
       end
+      -- local tensor_target_mrfnorm = torch.repeatTensor(target_mrfnorm:float(), 1, net:get(mrf_layers[id_mrf] - 1).output:size()[2] - (params.mrf_patch_size[id_mrf] - 1), net:get(mrf_layers[id_mrf] - 1).output:size()[3] - (params.mrf_patch_size[id_mrf] - 1)) 
 
-      ---------------------------------------------------
-      -- add a pixel based contentloss layer if necessary
-      --------------------------------------------------- 
-      if #content_layers_pretrained > 0 then
-        if content_layers_pretrained[1] == 0 then
-          add_layer_content()
-        end
+      -- print('*****************************************************')
+      -- print(string.format('call layer implemetation'));
+      -- print('*****************************************************')  
+      local nInputPlane = target_mrf:size()[2] / (params.mrf_patch_size[id_mrf] * params.mrf_patch_size[id_mrf])
+      local nOutputPlane = target_mrf:size()[1]
+      local kW = params.mrf_patch_size[id_mrf]
+      local kH = params.mrf_patch_size[id_mrf]
+      local dW = 1
+      local dH = 1
+      local input_size = source_feature_map:size()
+
+      local source_xgrid_, source_ygrid_ = drill_computeMRFfull(source_feature_map:float(), params.mrf_patch_size[id_mrf], 1, -1) 
+      local response_size = torch.LongStorage(3) 
+      response_size[1] = nOutputPlane
+      response_size[2] = source_ygrid_:nElement()
+      response_size[3] = source_xgrid_:nElement()
+      net:get(mrf_layers[id_mrf]):implement(params.mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, 1, 1, params.mrf_confidence_threshold[id_mrf], params.mrf_weight[id_mrf], params.gpu_chunck_size_1, params.gpu_chunck_size_2)
+      target_mrf = nil
+      tensor_target_mrf = nil
+      source_feature_map = nil
+      collectgarbage()
+    end
+
+    --------------------------------------------------------------------------------------------------------
+    -- local function for printing inter-mediate result
+    --------------------------------------------------------------------------------------------------------
+    local function maybe_print(t, loss)
+      local verbose = (params.print_iter > 0 and t % params.print_iter == 0)
+      if verbose then
+          print(string.format('Iteration %d, %d', t, params.num_iter[cur_res]))
+       end
+    end
+
+    --------------------------------------------------------------------------------------------------------
+    -- local function for saving inter-mediate result
+    --------------------------------------------------------------------------------------------------------
+    local function maybe_save(t)
+      local should_save = params.save_iter > 0 and t % params.save_iter == 0
+      should_save = should_save or t == params.num_iter
+      if should_save then
+      local disp = deprocess(input_image:float())
+      disp = image.minmax{tensor=disp, min=0, max=1}
+      disp = image.scale(disp, render_width, render_height, 'bilinear')
+      filename = params.output_folder .. '/' .. 'res_' .. cur_res .. '_' .. t .. '.jpg'
+      image.save(filename, disp)
       end
+    end
 
-      for i = 1, #cnn do
-        if next_content_idx <= #content_layers_pretrained or next_style_idx <= #style_layers_pretrained or next_mrf_idx <= #mrf_layers_pretrained then
-
-          local layer = cnn:get(i)
-
-          i_net_layer = i_net_layer + 1
-          net:add(layer)
-
-          -- -- add mrf_losses layer
-          if i == mrf_layers_pretrained[next_mrf_idx] then
-           if add_layer_mrf() then
-           else
-              mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
-                if add_layer_mrf() then
-                else
-                  mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
-                    if add_layer_mrf() then
-                    else
-                      mrf_layer_patch_size[next_mrf_idx] = mrf_layer_patch_size[next_mrf_idx] - 1
-                      if add_layer_mrf() then
-                      else
-                        print('error in add_layer')
-                        do return end
-                      end
-                    end
-                end
-            end
-          end
-
-          -- add a content_losses layer
-          if i == content_layers_pretrained[next_content_idx] then
-            add_layer_content()
-          end
-
-          -- add style_losses layer
-          if i == style_layers_pretrained[next_style_idx] then
-            add_layer_style()
-          end
-
-        end
-      end -- for i = 1, #cnn do
-
-      cnn = nil
+    --------------------------------------------------------------------------------------------------------
+    -- local function for computing energy
+    --------------------------------------------------------------------------------------------------------      
+    local function feval(x)
+      num_calls = num_calls + 1
+      net:forward(x)
+      local grad = net:backward(x, dy)
+      local loss = 0
       collectgarbage()
 
-      print(net)
+      maybe_print(num_calls, loss)
+      maybe_save(num_calls)
 
-      print('content_layers: ')
-        for i = 1, #content_layers do
-        print(content_layers[i])
-      end
+      -- optim.lbfgs expects a vector for gradients
+      return loss, grad:view(grad:nElement())
+    end
 
-      print('style_layers: ')
-        for i = 1, #style_layers do
-        print(style_layers[i])
-      end
+    -------------------------------------------------------------------------------
+    -- initialize network
+    ------------------------------------------------------------------------------- 
+    if params.gpu >= 0 then
+      require 'cutorch'
+      require 'cunn'
+      cutorch.setDevice(params.gpu + 1)
+    else
+      params.backend = 'nn-cpu'
+    end
 
-      print('mrf_layers: ')
-        for i = 1, #mrf_layers do
-        print(mrf_layers[i])
-      end
+    if params.backend == 'cudnn' then
+      require 'cudnn'
+    end
 
-      -----------------------------------------------------
-      print('Synthesis')
-      -----------------------------------------------------
+    local cnn = loadcaffe.load(params.proto_file, params.model_file, params.backend):float()
+    if params.gpu >= 0 then
+      cnn:cuda()
+    end
+    print('cnn succesfully loaded')
+
+    for i_res = 1, params.num_res do
+      local timer = torch.Timer()
+
+      cur_res = i_res
+      num_calls = 0
       local optim_state = {
-        maxIter = params.num_iterations,
+        maxIter = params.num_iter[i_res],
         nCorrection = params.nCorrection,
         verbose=true,
         tolX = 0,
         tolFun = 0,
-      }        
+      }  
 
-      if params.init == 'random' then
-         output_caffe = torch.randn(content_image_caffe:size()):float():mul(0.001)
-         output = deprocess(output_caffe:float())
-         print('random initialization ...')
-      elseif params.init == 'image' then
-         output_caffe = ini_image_caffe:clone():float()
-         output = deprocess(output_caffe:float())
+      -- initialize image and target
+      if i_res == 1 then
+
+        if params.ini_method == 'random' then
+          input_image = torch.randn(pyramid_source_image_caffe[i_res]:size()):float():mul(0.001)
+        elseif params.ini_method == 'image' then
+          input_image = pyramid_source_image_caffe[i_res]:clone():float()
+        else
+          error('Invalid init type')
+        end
+        input_image = input_image:cuda()
+
+        -----------------------------------------------------
+        -- add a tv layer
+        -----------------------------------------------------    
+        if params.tv_weight > 0 then
+          local tv_mod = nn.TVLoss(params.tv_weight):float()
+          if params.gpu >= 0 then
+            tv_mod:cuda()
+          end
+          i_net_layer = i_net_layer + 1
+          net:add(tv_mod)
+        end
+        
+        for i = 1, #cnn do
+          if next_mrf_idx <= #mrf_layers_pretrained then
+            local layer = cnn:get(i)
+
+            i_net_layer = i_net_layer + 1
+            net:add(layer)
+
+            -- -- add mrfstatsyn layer
+            if i == mrf_layers_pretrained[next_mrf_idx] then
+              if add_mrf() == false then
+                print('build network failed: adding mrf layer failed')
+                do return end
+              end
+            end
+
+          end
+        end -- for i = 1, #cnn do
+
+        cnn = nil
+        collectgarbage()
+        
+        print(net)
+
+
+        print('mrf_layers: ')
+        for i = 1, #mrf_layers do
+          print(mrf_layers[i])
+        end
+
+        print('network has been built.')
       else
-         error('Invalid init type')
+        input_image = image.scale(input_image:float(), pyramid_source_image_caffe[i_res]:size()[3], pyramid_source_image_caffe[i_res]:size()[2], 'bilinear'):clone()
+        input_image = input_image:cuda()           
+
       end
-      if params.gpu >= 0 then
-         output_caffe = output_caffe:cuda()
+
+      print('*****************************************************')
+      print('Synthesis started at resolution ' .. cur_res)
+      print('*****************************************************')
+
+      print('Implementing mrf layers ...')
+      for i = 1, #mrf_layers do
+        if build_mrf(i) == false then
+          print('build_mrf failed')
+          do return end
+        end
       end
-      input_caffe = output_caffe  
-      mask = torch.Tensor(input_caffe:size()):fill(1)
-      if params.gpu >= 0 then
-         mask = mask:cuda()
-      end   
 
-      -- Run optimization.
-      y = net:forward(input_caffe)
-      dy = input_caffe.new(#y):zero()
+      mask = torch.Tensor(input_image:size()):fill(1)
+      mask = mask:cuda()
+        
+      y = net:forward(input_image)              
+      dy = input_image.new(#y):zero()
 
-      local x, losses = mylbfgs(feval, input_caffe, optim_state, nil, mask) 
+      -- do optimizatoin
+      local x, losses = mylbfgs(feval, input_image, optim_state, nil, mask) 
 
-      -- -- save the final output of this scale
-      output = deprocess(input_caffe:float())
-      output = image.minmax{tensor=output, min=0, max=1}
-      local filename_output = params.output_folder .. '/' .. params.result_name .. '_MRF_res_' .. string.format('%d', params.res) .. '.png'
-      image.save(filename_output, output) 
+      local t = timer:time().real
+      print('Synthesis finished at resolution ' .. cur_res ..  ', ' .. t .. ' seconds')
+    end
 
-      local filename_temp = params.output_folder .. '/' .. 'syn_res_' .. string.format('%d', params.res) .. '.png'
-      image.save(filename_temp, output) 
-
-      net = nil
-      ini_block_caffe = nil
-      coord_block_y = nil
-      coord_block_x = nil
-      content_layers = nil
-      i_content_layer = nil
-      next_content_idx = nil
-      style_layers = nil
-      i_style_layer = nil
-      next_style_idx = nil
-      mrf_layers = nil
-      i_mrf_layer = nil
-      next_mrf_idx = nil
-      content_losses, style_losses = nil, nil
-      input_caffe = nil
-      output_caffe = nil
-      output = nil 
-      num_calls = nil
-      y = nil
-      dy = nil
-      mask = nil
-      mask_weight = nil
-      collectgarbage()
-      local t_main = timer_main:time().real
-      print('t_main: ' .. t_main .. ' seconds')
+  net = nil
+  source_image = nil
+  target_image = nil
+  pyramid_source_image_caffe = nil
+  pyramid_target_image_caffe = nil
+  input_image = nil
+  output_image = nil
+  mrf_losses = nil
+  mrf_layers = nil
+  optim_state = nil
+  collectgarbage()  
+  collectgarbage()
+      
   end -- end of main
 
 
-  function build_filename(output_image, iteration)
-     local idx = string.find(output_image, '%.')
-     local basename = string.sub(output_image, 1, idx - 1)
-     local ext = string.sub(output_image, idx)
-     return string.format('%s_%d%s', basename, iteration, ext)
-  end
 
   function preprocess(img)
     local mean_pixel = torch.Tensor({103.939, 116.779, 123.68})
@@ -509,277 +448,17 @@ local function run_test(content_name, style_name, ini_method, num_iter, mrf_laye
   function deprocess(img)
     local mean_pixel = torch.Tensor({103.939, 116.779, 123.68})
     mean_pixel = mean_pixel:view(3, 1, 1):expandAs(img)
-    img = img + mean_pixel
+    img = img + mean_pixel:float()
     local perm = torch.LongTensor{3, 2, 1}
     img = img:index(1, perm):div(256.0)
     return img
   end
-
-  function computegrid(width, height, block_size, block_stride, flag_all)
-     coord_block_y = torch.range(1, height - block_size + 1, block_stride) 
-     if flag_all == 1 then
-       if coord_block_y[#coord_block_y] < height - block_size + 1 then
-          local tail = torch.Tensor(1)
-          tail[1] = height - block_size + 1
-          coord_block_y = torch.cat(coord_block_y, tail)
-       end
-     end
-
-     coord_block_x = torch.range(1, width - block_size + 1, block_stride) 
-     if flag_all == 1 then
-       if coord_block_x[#coord_block_x] < width - block_size + 1 then
-          local tail = torch.Tensor(1)
-          tail[1] = width - block_size + 1
-          coord_block_x = torch.cat(coord_block_x, tail)
-       end
-    end
-
-     return coord_block_x, coord_block_y
-  end
-
-  function computeMRF(input, size, stride, gpu)
-
-    local coord_x, coord_y = computegrid(input:size()[3], input:size()[2], size, stride)
-    local dim_1 = input:size()[1] * size * size
-    local dim_2 = coord_y:nElement()
-    local dim_3 = coord_x:nElement()
-    local t_feature_mrf = torch.Tensor(dim_2 * dim_3, input:size()[1], size, size)
-
-    if gpu >= 0 then
-      t_feature_mrf = t_feature_mrf:cuda()
-    end
-
-    local count = 1
-    for i_row = 1, dim_2 do
-      for i_col = 1, dim_3 do
-        t_feature_mrf[count] = input[{{1, input:size()[1]}, {coord_y[i_row], coord_y[i_row] + size - 1}, {coord_x[i_col], coord_x[i_col] + size - 1}}]
-        count = count + 1
-      end
-    end
-    local feature_mrf = t_feature_mrf:reshape(dim_2 * dim_3, dim_1)
-
-    return t_feature_mrf, feature_mrf, coord_x, coord_y
-  end
-
-
-  function computeBB(width, height, alpha)
-    local min_x, min_y, max_x, max_y
-    local x1 = 1
-    local y1 = 1
-    local x2 = width
-    local y2 = 1
-    local x3 = width
-    local y3 = height
-    local x4 = 1
-    local y4 = height
-    local x0 = width / 2
-    local y0 = height / 2
-
-    x1r = x0+(x1-x0)*math.cos(alpha)+(y1-y0)*math.sin(alpha)
-    y1r = y0-(x1-x0)*math.sin(alpha)+(y1-y0)*math.cos(alpha)
-
-    x2r = x0+(x2-x0)*math.cos(alpha)+(y2-y0)*math.sin(alpha)
-    y2r = y0-(x2-x0)*math.sin(alpha)+(y2-y0)*math.cos(alpha)
-
-    x3r = x0+(x3-x0)*math.cos(alpha)+(y3-y0)*math.sin(alpha)
-    y3r = y0-(x3-x0)*math.sin(alpha)+(y3-y0)*math.cos(alpha)
-
-    x4r = x0+(x4-x0)*math.cos(alpha)+(y4-y0)*math.sin(alpha)
-    y4r = y0-(x4-x0)*math.sin(alpha)+(y4-y0)*math.cos(alpha)
-
-    print(x1r .. ' ' .. y1r .. ' ' .. x2r .. ' ' .. y2r .. ' ' .. x3r .. ' ' .. y3r .. ' ' .. x4r .. ' ' .. y4r)
-    if alpha > 0 then
-      -- find intersection P of line [x1, y1]-[x4, y4] and [x1r, y1r]-[x2r, y2r]
-      local px1 = ((x1 * y4 - y1 * x4) * (x1r - x2r) - (x1 - x4) * (x1r * y2r - y1r * x2r)) / ((x1 - x4) * (y1r - y2r) - (y1 - y4) * (x1r - x2r))
-      local py1 = ((x1 * y4 - y1 * x4) * (y1r - y2r) - (y1 - y4) * (x1r * y2r - y1r * x2r)) / ((x1 - x4) * (y1r - y2r) - (y1 - y4) * (x1r - x2r))
-      local px2 = px1 + 1
-      local py2 = py1
-      print(px1 .. ' ' .. py1)
-      -- find the intersection Q of line [px1, py1]-[px2, py2] and [x2r, y2r]-[x3r][y3r]
-
-      local qx = ((px1 * py2 - py1 * px2) * (x2r - x3r) - (px1 - px2) * (x2r * y3r - y2r * x3r)) / ((px1 - px2) * (y2r - y3r) - (py1 - py2) * (x2r - x3r))
-      local qy = ((px1 * py2 - py1 * px2) * (y2r - y3r) - (py1 - py2) * (x2r * y3r - y2r * x3r)) / ((px1 - px2) * (y2r - y3r) - (py1 - py2) * (x2r - x3r))  
-      print(qx .. ' ' .. qy)
-
-      min_x = width - qx
-      min_y = qy
-      max_x = qx
-      max_y = height - qy
-    else if alpha < 0 then
-      -- find intersection P of line [x2, y2]-[x3, y3] and [x1r, y1r]-[x2r, y2r]
-      local px1 = ((x2 * y3 - y2 * x3) * (x1r - x2r) - (x2 - x3) * (x1r * y2r - y1r * x2r)) / ((x2 - x3) * (y1r - y2r) - (y2 - y3) * (x1r - x2r))
-      local py1 = ((x2 * y3 - y1 * x3) * (y1r - y2r) - (y2 - y3) * (x1r * y2r - y1r * x2r)) / ((x2 - x3) * (y1r - y2r) - (y2 - y3) * (x1r - x2r))
-      local px2 = px1 - 1
-      local py2 = py1
-      -- find the intersection Q of line [px1, py1]-[px2, py2] and [x1r, y1r]-[x4r][y4r]
-      local qx = ((px1 * py2 - py1 * px2) * (x1r - x4r) - (px1 - px2) * (x1r * y4r - y1r * x4r)) / ((px1 - px2) * (y1r - y4r) - (py1 - py2) * (x1r - x4r))
-      local qy = ((px1 * py2 - py1 * px2) * (y1r - y4r) - (py1 - py2) * (x1r * y4r - y1r * x4r)) / ((px1 - px2) * (y1r - y4r) - (py1 - py2) * (x1r - x4r))  
-      min_x = qx
-      min_y = qy
-      max_x = width - min_x
-      max_y = height - min_y
-      else
-        min_x = x1
-        min_y = y1
-        max_x = x2
-        max_y = y3
-      end
-    end
-
-    return math.floor(min_x), math.floor(min_y), math.floor(max_x), math.floor(max_y)
-  end
-
-  ------------------------------------------------------------------------
-  -- excute main
-  ------------------------------------------------------------------------
-
-  ---------------------------------------------------------------
-  -- Resolution 1
-  ---------------------------------------------------------------
-  -- input options
-  cmd:option('-proto_file', 'data/models/VGG_ILSVRC_19_layers_deploy.prototxt')
-  cmd:option('-model_file', 'data/models/VGG_ILSVRC_19_layers.caffemodel')
-  cmd:option('-normalize_gradients', false)
-
-  local result_name = style_name .. '_free_MRF'
-  cmd:option('-result_name', style_name .. '_free', 'output name prefix')
-  cmd:option('-style_image', './data/style/' .. style_name .. '.jpg',
-            'Style target image')
-  cmd:option('-mrf_image', './data/style/' .. style_name .. '.jpg',
-            'MRF target image')
-  cmd:option('-content_image', './data/content/' .. content_name .. '.jpg',
-            'Content target image')
-  cmd:option('-ini_image', './data/content/' .. content_name .. '.jpg',
-            'initial target image')
-
-  cmd:option('-init', ini_method, 'random|image')
-
-  -- gpu options
-  cmd:option('-gpu', 0, 'Zero-indexed ID of the GPU to use; for CPU mode set -gpu = -1')
-  cmd:option('-backend', 'cudnn', 'nn|cudnn')
-
-  -- resolution options
-  cmd:option('-render_size', 256, '')
-
-  -- l-bfgs options
-  cmd:option('-nCorrection', 100)
-
-  -- Output options
   
-  cmd:option('-print_iter', 50)
-  cmd:option('-save_iter', 50)
-  cmd:option('-output_image', 'out.png')
-
-  -- -- Texture Optimization
-  cmd:option('-tv_weight', 1e-3)
-
-  cmd:option('-content_layers_pretrained', {}, '')
-  cmd:option('-content_weight', 0)
-
-  cmd:option('-style_layers_pretrained', {}, '')
-  cmd:option('-style_layer_weights', {}, '')
-  cmd:option('-style_weight', 0)
-
-  cmd:option('-mrf_layers_pretrained', mrf_layers, '')
-  cmd:option('-mrf_layer_weights', {1e-5, 1e-5, 1e-5, 1e-5, 1e-5, 1e-5, 1e-5}, '') 
-  cmd:option('-mrf_layer_patch_size', mrf_patch_size, 'patch size')
-  cmd:option('-mrf_layer_sample_stride', {1, 1, 1, 1, 1, 1, 1}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
-  cmd:option('-mrf_layer_synthesis_stride', {1, 1, 1, 1, 1, 1, 1}, 'stride for synthesis mrf on the output image. In general this should be kept small so patches overlap')
-  cmd:option('-mrf_layer_confidence_threshold', {0, 0, 0, 0, 0, 0, 0}, 'threshold for adding mrf into the target. MRF with confidence smaller than this value will not be used')
-
-  cmd:option('-mrf_num_rotation', mrf_num_rotation, '')
-  cmd:option('-mrf_num_scale', mrf_num_scale, '')
-  cmd:option('-mrf_step_rotation', math.pi/24, '')
-  cmd:option('-mrf_step_scale', 1.05, '')
-
-  cmd:option('-image_size', 64, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 32, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
-  cmd:option('-res', 1, 'resolution of synthesis')
-
-
-  cmd:option('-output_folder', 'data/result/freesyn/MRF/' .. result_name, 'output folder')
-  cmd:option('-num_iterations', num_iter[1])
-  local params = cmd:parse(arg)
-
-  -- make a folder for result
-  os.execute("mkdir " .. 'data/result/freesyn/MRF/')
-  os.execute("mkdir " .. params.output_folder)
-
-  ---------------------------------------------------------------
-  -- Resolution 1
-  ---------------------------------------------------------------
   main(params)
 
-  ---------------------------------------------------------------
-  -- Resolution 2
-  ---------------------------------------------------------------
-  cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_1.png',
-             'initial target image')
-
-  cmd:option('-image_size', 128, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 64, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
-
-  cmd:option('-init', 'image', 'random|image')
-  cmd:option('-res', 2, 'resolution of synthesis')
-  cmd:option('-num_iterations', num_iter[2])
-
-  local params = cmd:parse(arg)
-  main(params)
-
-  ---------------------------------------------------------------
-  -- Resolution 3
-  ---------------------------------------------------------------
-  cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_2.png',
-             'initial target image')
-
-  cmd:option('-image_size', 256, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 128, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
-
-  cmd:option('-init', 'image', 'random|image')
-  cmd:option('-res', 3, 'resolution of synthesis')
-
-  -- -- use less interation to save time
-  cmd:option('-num_iterations', num_iter[3])
-
-  -- use larger patch has the danger of crash gpu
-  cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3}, 'patch size')
-
-  local params = cmd:parse(arg)
-  main(params)
-
-  ---------------------------------------------------------------
-  -- Resolution 4
-  ---------------------------------------------------------------
-  cmd:option('-ini_image', params.output_folder .. '/' .. 'syn_res_3.png',
-             'initial target image')
-  
-  cmd:option('-image_size', 384, 'Maximum height / width of generated image')
-  cmd:option('-style_size', 192, 'Maximum height / width of style image')
-
-  cmd:option('-render_size', 256, '')
-
-  cmd:option('-init', 'image', 'random|image')
-  cmd:option('-res', 4, 'resolution of synthesis')
-
-  -- -- use less interation to save time
-  cmd:option('-num_iterations', num_iter[4])
-
-
-  -- use larger patch has the danger of crash gpu
-  cmd:option('-mrf_layers_pretrained', {12}, '') -- use finer details for the last resolution
-  cmd:option('-mrf_layer_patch_size', {3, 3, 3, 3, 3, 3, 3, 3}, 'patch size')
-  cmd:option('-mrf_layer_sample_stride', {2, 2}, 'stride for sampling mrf from style images, this could be make very sparse to save memoery & time')
-  cmd:option('-mrf_layer_synthesis_stride', {2, 2}, 'stride for synthesis mrf on the output image. In general this should be kept small so patches overlap')
-
-  local params = cmd:parse(arg)
-  main(params)
-
+  local t_test = timer_TEST:time().real
+  print('Total time:  ' .. t_test .. 'seconds.') 
+  -- sleep(1)
   return flag_state
 end
 
