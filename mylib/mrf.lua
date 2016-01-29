@@ -102,8 +102,20 @@ function MRFMM:updateGradInput(input, gradOutput)
   self.gradTO = self.gradTO:fill(0)
   self.gradTO_confident = self.gradTO_confident:fill(0) + 1e-10
   local source_mrf, x, y = computeMRFnoTensor(input:float(), self.kW, 1, self.mode == 'memory' and -1 or 1, self.backend)
-  local source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
-  local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1) 
+  local source_mrfnorm = torch.Tensor(source_mrf:size()[1])
+  if self.mode == 'speed' then
+      if self.backend == 'cudnn' then
+        source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
+      else
+        for i_source = 1, source_mrf:size()[1] do
+          source_mrfnorm[i_source] = torch.sqrt(torch.sum(torch.cmul(source_mrf[i_source], source_mrf[i_source])))
+        end
+        source_mrfnorm = source_mrfnorm:resize(1, y:nElement(), x:nElement())
+      end
+  else
+      source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
+  end
+  local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1)
   if self.backend == 'cudnn' then
     tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
   else
