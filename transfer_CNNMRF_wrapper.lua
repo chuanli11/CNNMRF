@@ -6,7 +6,7 @@ require 'loadcaffe'
 
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
 
-local function run_test(content_name, style_name, ini_method, max_size, num_res, num_iter, mrf_layers, mrf_weight, mrf_patch_size, mrf_num_rotation, mrf_num_scale, mrf_sample_stride, mrf_synthesis_stride, mrf_confidence_threshold, content_layers, content_weight, tv_weight, mode, gpu_chunck_size_1, gpu_chunck_size_2)
+local function run_test(content_name, style_name, ini_method, max_size, num_res, num_iter, mrf_layers, mrf_weight, mrf_patch_size, mrf_num_rotation, mrf_num_scale, mrf_sample_stride, mrf_synthesis_stride, mrf_confidence_threshold, content_layers, content_weight, tv_weight, mode, gpu_chunck_size_1, gpu_chunck_size_2, backend)
   -- local clock = os.clock
   -- function sleep(n)  -- seconds
   --   local t0 = clock()
@@ -42,7 +42,7 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
   params.mode = mode or 'speed'
   params.gpu_chunck_size_1 = gpu_chunck_size_1 or 256
   params.gpu_chunck_size_2 = gpu_chunck_size_2 or 16
-
+  params.backend = backend or 'cudnn'
   -- fixed parameters
   params.target_step_rotation = math.pi/24
   params.target_step_scale = 1.05
@@ -53,7 +53,6 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
   params.proto_file = 'data/models/VGG_ILSVRC_19_layers_deploy.prototxt'
   params.model_file = 'data/models/VGG_ILSVRC_19_layers.caffemodel'
   params.gpu = 0
-  params.backend = 'cudnn'
   params.nCorrection = 25
   params.print_iter = 10
   params.save_iter = 10
@@ -109,17 +108,29 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
     local function add_content()
       local source =  pyramid_source_image_caffe[cur_res]:clone()
       if params.gpu >= 0 then
-        source = source:cuda()
+        if params.backend == 'cudnn' then
+          source = source:cuda()
+        else
+          source = source:cl()
+        end
       end
       local feature = net:forward(source):clone() -- generate the content target using content image
       if params.gpu >= 0 then
-        feature = feature:cuda()
+        if params.backend == 'cudnn' then
+          feature = feature:cuda()
+        else
+          feature = feature:cl()
+        end
       end
 
       local norm = params.normalize_gradients
       local loss_module = nn.ContentLoss(params.content_weight, feature, norm):float()
       if params.gpu >= 0 then
-        loss_module:cuda()
+        if params.backend == 'cudnn' then
+          loss_module:cuda()
+        else
+          loss_module:cl()
+        end
       end
 
       i_content_layer = i_content_layer + 1
@@ -133,18 +144,30 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
     local function update_content(idx_layer, idx_content)
       local source =  pyramid_source_image_caffe[cur_res]:clone()
       if params.gpu >= 0 then
-        source = source:cuda()
+        if params.backend == 'cudnn' then
+          source = source:cuda()
+        else
+          source = source:cl()
+        end
       end
       net:forward(source)
       local feature = net:get(idx_layer).output:clone()
       if params.gpu >= 0 then
-        feature = feature:cuda()
+        if params.backend == 'cudnn' then
+          feature = feature:cuda()
+        else
+          feature = feature:cl()
+        end
       end
 
       local norm = params.normalize_gradients
       local loss_module = nn.ContentLoss(params.content_weight, feature, norm):float()
       if params.gpu >= 0 then
-        loss_module:cuda()
+        if params.backend == 'cudnn' then
+          loss_module:cuda()
+        else
+          loss_module:cl()
+        end
       end
       net:get(idx_layer):update(loss_module)
     end
@@ -159,7 +182,11 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
         i_net_layer = i_net_layer + 1
         next_mrf_idx = next_mrf_idx + 1 
         if params.gpu >= 0 then
-          mrf_module:cuda()
+          if params.backend == 'cudnn' then
+            mrf_module:cuda()
+          else
+            mrf_module:cl()
+          end
         end
         net:add(mrf_module)
         table.insert(mrf_losses, mrf_module)
@@ -181,7 +208,11 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
         for i_s = -params.target_num_scale, params.target_num_scale do  
           local max_sz = math.floor(math.max(target_image_rt_caffe:size()[2], target_image_rt_caffe:size()[3]) * torch.pow(params.target_step_scale, i_s))
           local target_image_rt_s_caffe = image.scale(target_image_rt_caffe, max_sz, 'bilinear')
-          target_image_rt_s_caffe = target_image_rt_s_caffe:cuda()
+          if params.backend == 'cudnn' then
+            target_image_rt_s_caffe = target_image_rt_s_caffe:cuda()
+          else
+            target_image_rt_s_caffe = target_image_rt_s_caffe:cl()
+          end
           table.insert(target_images_caffe, target_image_rt_s_caffe)
         end
       end
@@ -262,8 +293,12 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
       --------------------------------------------------------
       -- print('*****************************************************')
       -- print(string.format('process source image'));
-      -- print('*****************************************************')    
-      net:forward(pyramid_source_image_caffe[cur_res]:cuda()) 
+      -- print('*****************************************************')
+      if params.backend == 'cudnn' then
+        net:forward(pyramid_source_image_caffe[cur_res]:cuda())
+      else
+        net:forward(pyramid_source_image_caffe[cur_res]:cl())
+      end
       local source_feature_map = net:get(mrf_layers[id_mrf] - 1).output:float()
       if params.mrf_patch_size[id_mrf] > source_feature_map:size()[2] or params.mrf_patch_size[id_mrf] > source_feature_map:size()[3] then 
         print('source_image_caffe is not big enough for patch')
@@ -302,7 +337,7 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
       response_size[1] = nOutputPlane
       response_size[2] = source_ygrid_:nElement()
       response_size[3] = source_xgrid_:nElement()
-      net:get(mrf_layers[id_mrf]):implement(params.mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, 1, 1, params.mrf_confidence_threshold[id_mrf], params.mrf_weight[id_mrf], params.gpu_chunck_size_1, params.gpu_chunck_size_2)
+      net:get(mrf_layers[id_mrf]):implement(params.mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, 1, 1, params.mrf_confidence_threshold[id_mrf], params.mrf_weight[id_mrf], params.gpu_chunck_size_1, params.gpu_chunck_size_2, params.backend)
       target_mrf = nil
       tensor_target_mrf = nil
       source_feature_map = nil
@@ -355,9 +390,15 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
     -- initialize network
     ------------------------------------------------------------------------------- 
     if params.gpu >= 0 then
-      require 'cutorch'
-      require 'cunn'
-      cutorch.setDevice(params.gpu + 1)
+      if params.backend == 'cudnn' then
+        require 'cutorch'
+        require 'cunn'
+        cutorch.setDevice(params.gpu + 1)
+      else
+        require 'cltorch'
+        require 'clnn'
+        cltorch.setDevice(params.gpu + 1)
+      end
     else
       params.backend = 'nn-cpu'
     end
@@ -366,9 +407,17 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
       require 'cudnn'
     end
 
-    local cnn = loadcaffe.load(params.proto_file, params.model_file, params.backend):float()
+    local loadcaffe_backend = params.backend
+    if params.backend == 'clnn' then
+      loadcaffe_backend = 'nn'
+    end
+    local cnn = loadcaffe.load(params.proto_file, params.model_file, loadcaffe_backend):float()
     if params.gpu >= 0 then
-      cnn:cuda()
+      if params.backend == 'cudnn' then
+        cnn:cuda()
+      else
+        cnn:cl()
+      end
     end
     print('cnn succesfully loaded')
 
@@ -395,7 +444,12 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
         else
           error('Invalid init type')
         end
-        input_image = input_image:cuda()
+
+        if params.backend == 'cudnn' then
+          input_image = input_image:cuda()
+        else
+          input_image = input_image:cl()
+        end
 
         -----------------------------------------------------
         -- add a tv layer
@@ -403,7 +457,11 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
         if params.tv_weight > 0 then
           local tv_mod = nn.TVLoss(params.tv_weight):float()
           if params.gpu >= 0 then
-            tv_mod:cuda()
+            if params.backend == 'cudnn' then
+              tv_mod:cuda()
+            else
+              tv_mod:cl()
+            end
           end
           i_net_layer = i_net_layer + 1
           net:add(tv_mod)
@@ -450,7 +508,11 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
         print('network has been built.')
       else
         input_image = image.scale(input_image:float(), pyramid_source_image_caffe[i_res]:size()[3], pyramid_source_image_caffe[i_res]:size()[2], 'bilinear'):clone()
-        input_image = input_image:cuda()           
+        if params.backend == 'cudnn' then
+          input_image = input_image:cuda()
+        else
+          input_image = input_image:cl()
+        end
 
         -- -- update content layers
         for i_layer = 1, #content_layers do
@@ -473,8 +535,12 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
       end
 
       mask = torch.Tensor(input_image:size()):fill(1)
-      mask = mask:cuda()
-        
+      if params.backend == 'cudnn' then
+        mask = mask:cuda()
+      else
+        mask = mask:cl()
+      end
+
       y = net:forward(input_image)              
       dy = input_image.new(#y):zero()
 

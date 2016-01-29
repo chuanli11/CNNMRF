@@ -6,7 +6,7 @@ This algorithm is for
 * guided image synthesis (for example, transfer the style between different images)
 
 # Hardware
-* The algorithm requires a dedicate GPU. We provid two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
+* The algorithm requires a dedicated GPU. We provide two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
 
 
 # Examples
@@ -44,8 +44,14 @@ This code is based on Torch. It has only been tested on Mac and Ubuntu.
 Dependencies:
 * [Torch](https://github.com/torch/torch7)
 * [loadcaffe](https://github.com/szagoruyko/loadcaffe)
+
+For CUDA backend:
 * [CUDA](https://developer.nvidia.com/cuda-downloads)
 * [cudnn](https://developer.nvidia.com/cudnn)
+
+For OpenCL backend:
+* [cltorch](https://github.com/hughperkins/cltorch)
+* [clnn](https://github.com/hughperkins/clnn)
 
 Pre-trained network:
 We use the the original VGG-19 model. You can find the download script at [Neural Style](https://github.com/jcjohnson/neural-style). The downloaded model and prototxt file MUST be saved in the folder "data/models"

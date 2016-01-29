@@ -1,4 +1,4 @@
-function computeMRF(input, size, stride, gpu)
+function computeMRF(input, size, stride, gpu, backend)
 	local coord_x, coord_y = computegrid(input:size()[3], input:size()[2], size, stride)
 	local dim_1 = input:size()[1] * size * size
 	local dim_2 = coord_y:nElement()
@@ -6,7 +6,11 @@ function computeMRF(input, size, stride, gpu)
 	local t_feature_mrf = torch.Tensor(dim_2 * dim_3, input:size()[1], size, size)
 
 	if gpu >= 0 then
-	  t_feature_mrf = t_feature_mrf:cuda()
+	  if backend == 'cudnn' then
+	    t_feature_mrf = t_feature_mrf:cuda()
+	  else
+	    t_feature_mrf = t_feature_mrf:cl()
+	  end
 	end
 	local count = 1
 	for i_row = 1, dim_2 do
@@ -21,7 +25,7 @@ function computeMRF(input, size, stride, gpu)
 end
 
 
-function computeMRFnoTensor(input, size, stride, gpu)
+function computeMRFnoTensor(input, size, stride, gpu, backend)
 	local coord_x, coord_y = computegrid(input:size()[3], input:size()[2], size, stride)
 	local dim_1 = input:size()[1] * size * size
 	local dim_2 = coord_y:nElement()
@@ -29,7 +33,11 @@ function computeMRFnoTensor(input, size, stride, gpu)
 	local t_feature_mrf = torch.Tensor(dim_2 * dim_3, input:size()[1], size, size)
 
 	if gpu >= 0 then
-	  t_feature_mrf = t_feature_mrf:cuda()
+	  if backend == 'cudnn' then
+        t_feature_mrf = t_feature_mrf:cuda()
+      else
+        t_feature_mrf = t_feature_mrf:cl()
+      end
 	end
 	local count = 1
 	for i_row = 1, dim_2 do

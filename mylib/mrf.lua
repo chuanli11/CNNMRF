@@ -4,7 +4,7 @@ function MRFMM:__init()
    parent.__init(self)
 end
 
-function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, dW, dH, threshold_conf, strength, gpu_chunck_size_1, gpu_chunck_size_2)
+function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, dW, dH, threshold_conf, strength, gpu_chunck_size_1, gpu_chunck_size_2, backend)
   self.target_mrf = target_mrf:clone()
   self.target_mrfnorm = target_mrfnorm:clone()
   self.source_x = source_x
@@ -21,7 +21,12 @@ function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, so
   self.padW = padW or 0
   self.padH = padH or self.padW
   self.bias = torch.Tensor(nOutputPlane):fill(0)
-  self.bias = self.bias:cuda()
+  self.backend = backend
+  if self.backend == 'cudnn' then
+    self.bias = self.bias:cuda()
+  else
+    self.bias = self.bias:cl()
+  end
   self.gradTO = torch.Tensor(input_size[1], input_size[2], input_size[3])
   self.gradTO_confident = torch.Tensor(input_size[2], input_size[3])
   self.response = torch.Tensor(response_size[1], response_size[2], response_size[3]) 
@@ -31,28 +36,37 @@ function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, so
   self.tensor_target_mrfnorm = torch.repeatTensor(target_mrfnorm, 1, self.gpu_chunck_size_2, input_size[3] - (kW - 1))
   
   if self.mode == 'speed' then 
+    if self.backend == 'cudnn' then
       self.target_mrf = self.target_mrf:cuda()
       self.target_mrfnorm = self.target_mrfnorm:cuda()
       self.tensor_target_mrfnorm = self.tensor_target_mrfnorm:cuda()
       self.gradTO = self.gradTO:cuda()
       self.gradTO_confident = self.gradTO_confident:cuda()
       self.response = self.response:cuda()
+    else
+      self.target_mrf = self.target_mrf:cl()
+      self.target_mrfnorm = self.target_mrfnorm:cl()
+      self.tensor_target_mrfnorm = self.tensor_target_mrfnorm:cl()
+      self.gradTO = self.gradTO:cl()
+      self.gradTO_confident = self.gradTO_confident:cl()
+      self.response = self.response:cl()
+    end
   end
 
-  -- print('***********************************')
-  -- print('mrf layer: ')
-  -- print('***********************************')
-  -- print(self.target_mrf:size())
-  -- print(self.tensor_target_mrf:size())
-  -- print(self.tensor_target_mrfnorm:size())
-  -- print(self.source_x)
-  -- print(self.source_y)
-  -- print(self.nInputPlane)
-  -- print(self.nOutputPlane)  
-  -- print(self.kW)
-  -- print(self.kH)
-  -- print(self.strength)
-  -- print(self.mode)
+  --[[print('***********************************')
+   print('mrf layer: ')
+   print('***********************************')
+   print(self.target_mrf:size())
+   print(self.tensor_target_mrf:size())
+   print(self.tensor_target_mrfnorm:size())
+   print(self.source_x)
+   print(self.source_y)
+   print(self.nInputPlane)
+   print(self.nOutputPlane)
+   print(self.kW)
+   print(self.kH)
+   print(self.strength)
+   print(self.mode)--]]
 end
 
 
@@ -87,10 +101,14 @@ function MRFMM:updateGradInput(input, gradOutput)
   input = makeContiguous(self, input)
   self.gradTO = self.gradTO:fill(0)
   self.gradTO_confident = self.gradTO_confident:fill(0) + 1e-10
-  local source_mrf, x, y = computeMRFnoTensor(input:float(), self.kW, 1, self.mode == 'memory' and -1 or 1) 
+  local source_mrf, x, y = computeMRFnoTensor(input:float(), self.kW, 1, self.mode == 'memory' and -1 or 1, self.backend)
   local source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
   local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1) 
-  tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
+  if self.backend == 'cudnn' then
+    tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
+  else
+    tensor_source_mrfnorm = tensor_source_mrfnorm:cl()
+  end
   local nOutputPlane_all = self.nOutputPlane -- hacked for memory safety
   local num_chunk = math.ceil(nOutputPlane_all / self.gpu_chunck_size_1) 
   -- local t_prep = timer_PREP:time().real
@@ -109,7 +127,11 @@ function MRFMM:updateGradInput(input, gradOutput)
 
     if self.mode == 'memory' then
       -- local timer_IO = torch.Timer()
-      self.weight = self.weight:cuda()
+      if self.backend == 'cudnn' then
+        self.weight = self.weight:cuda()
+      else
+        self.weight = self.weight:cl()
+      end
       -- t_io = t_io + timer_IO:time().real
     end
     self.nOutputPlane = i_end - i_start + 1
@@ -168,7 +190,11 @@ function MRFMM:updateGradInput(input, gradOutput)
   -- local t_syn = timer_SYN:time().real
 
   if gradOutput:size()[1] == input:size()[1] then
-    self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
+    if self.backend == 'cudnn' then
+      self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
+    else
+      self.gradInput = gradOutput:clone() + self.gradTO:cl() * self.strength * (-1)
+    end
   else
     self.gradInput = self.gradTO * self.strength * (-1)
   end

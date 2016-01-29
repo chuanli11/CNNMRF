@@ -38,44 +38,48 @@ transfer_CNNMRF_wrapper = require 'transfer_CNNMRF_wrapper'
 -- mode: speed or memory. Try 'speed' if you have a GPU with more than 4GB memory, and try 'memory' otherwise. The 'speed' mode is significantly faster (especially for synthesizing high resolutions) at the cost of higher GPU memory.
 -- gpu_chunck_size_1: Size of chunks to split feature maps along the channel dimension. This is to save memory when normalizing the matching score in mrf layers. Use large value if you have large gpu memory. As reference we use 256 for Titan X, and 32 for Geforce GT750M 2G.
 -- gpu_chunck_size_2: Size of chuncks to split feature maps along the y dimension. This is to save memory when normalizing the matching score in mrf layers. Use large value if you have large gpu memory. As reference we use 16 for Titan X, and 2 for Geforce GT750M 2G.
+-- backend: Use 'cudnn' for CUDA-enabled GPUs or 'clnn' for OpenCL.
 
 -----------------------------------------
 -- Reference tests 
 -----------------------------------------
--- speed mode V.S. momeory mode (Titan X 12G)
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16}, -- 101 seconds
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16}, -- 283 seconds
+-- speed mode V.S. memory mode (Titan X 12G)
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- 101 seconds
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16, 'cudnn'}, -- 283 seconds
 
--- speed mode V.S. momeory mode (Geforce GT750M 2G)
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16}, -- 570 seconds (gpu streching, not recommended) 
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16}, -- 973 seconds
+-- speed mode V.S. memory mode (Geforce GT750M 2G)
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- 570 seconds (gpu streching, not recommended) 
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16, 'cudnn'}, -- 973 seconds
+
+-- speed mode V.S. memory mode (Sapphire Radeon R9 280 3G)
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16, 'clnn'}, -- 301 seconds (346 seconds total)
 
 -- style interpolation (high resolution with Titan X 12G):
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16}, -- balanced                
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 4e1, 1e-3, 'speed', 256, 16}, -- more content 
--- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 256, 16}, -- more style 
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- balanced                
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 4e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- more content 
+-- {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- more style 
 
 -- style interpolation (low resolution with Geforce GT750M 2G):
--- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 32, 2},  -- balanced
--- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 4e1, 1e-3, 'speed', 32, 2}, -- more content 
--- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 32, 2}, -- more style 
+-- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 32, 2, 'cudnn'},  -- balanced
+-- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 4e1, 1e-3, 'speed', 32, 2, 'cudnn'}, -- more content 
+-- {'potrait1', 'picasso', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 32, 2, 'cudnn'}, -- more style 
 
 -- other
--- {'0', '0', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16}, -- Titan X 12G: 145 seconds
--- {'1', '1', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 256, 16}, -- Titan X 12G: 146 seconds
--- {'0', '0', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {3, 3}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 32, 2}, -- Geforce GT750M 2G: 593 seconds
--- {'1', '1', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {3, 3}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 32, 2}, -- Geforce GT750M 2G: 623 seconds
+-- {'0', '0', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- Titan X 12G: 145 seconds
+-- {'1', '1', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 256, 16, 'cudnn'}, -- Titan X 12G: 146 seconds
+-- {'0', '0', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {3, 3}, {2, 2}, {0, 0}, {23}, 1e1, 1e-3, 'speed', 32, 2, 'cudnn'}, -- Geforce GT750M 2G: 593 seconds
+-- {'1', '1', 'image', 256, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {3, 3}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 32, 2, 'cudnn'}, -- Geforce GT750M 2G: 623 seconds
 
    
 local list_params = { 
-                    
-                    {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16},
-                    {'0', '0', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16},
-                    {'1', '1', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 256, 16},
+                    {'potrait1', 'picasso', 'image', 224, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'clnn'},
+                    --{'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'},
+                    --{'0', '0', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'},
+                    --{'1', '1', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 256, 16, 'cudnn'},
                     }    
 
 for i_test = 1, #list_params do
-    local state = transfer_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19], list_params[i_test][20])
+    local state = transfer_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19], list_params[i_test][20], list_params[i_test][21])
     collectgarbage()
 end
 
