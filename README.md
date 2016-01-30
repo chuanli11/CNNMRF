@@ -6,7 +6,7 @@ This algorithm is for
 * guided image synthesis (for example, transfer the style between different images)
 
 # Hardware
-* The algorithm requires a dedicated GPU. We provide two options here: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. See our reference tests with Titan X and GT750M 2G in  "run_trans.lua" and "run_syn.lua"
+* For cuda backend: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. There is also an opencl backend (thanks to Dionýz Lazar). See "run_trans.lua" and "run_syn.lua" for our reference tests with Titan X, GT750M 2G and Sapphire Radeon R9 280 3G.  
 
 
 # Examples
