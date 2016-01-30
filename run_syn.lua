@@ -35,23 +35,28 @@ syn_CNNMRF_wrapper = require 'syn_CNNMRF_wrapper'
 -- mode: speed or memory. Try 'speed' if you have a GPU with more than 4GB memory, and try 'memory' otherwise. The 'speed' mode is significantly faster (especially for synthesizing high resolutions) at the cost of higher GPU memory.
 -- gpu_chunck_size_1: Size of chunks to split feature maps along the channel dimension. This is to save memory when normalizing the matching score in mrf layers. Use large value if you have large gpu memory. As reference we use 256 for Titan X, and 32 for Geforce GT750M 2G.
 -- gpu_chunck_size_2: Size of chuncks to split feature maps along the y dimension. This is to save memory when normalizing the matching score in mrf layers. Use large value if you have large gpu memory. As reference we use 16 for Titan X, and 2 for Geforce GT750M 2G.
+-- backend: Use 'cudnn' for CUDA-enabled GPUs or 'clnn' for OpenCL.
 
 -----------------------------------------
 -- Reference tests 
 -----------------------------------------
--- speed mode V.S. momeory mode (Titan X 12G)
--- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16}, -- 131 seconds
--- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16} -- 172 seconds
+-- speed mode V.S. memory mode (Titan X 12G)
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16, 'cudnn'}, -- 131 seconds
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16, 'cudnn'} -- 172 seconds
 
--- speed mode V.S. momeory mode (Geforce GT750M 2G)
--- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16}, -- 552 seconds (gpu streching, not recommended)
--- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16}, -- 1506 seconds
+-- speed mode V.S. memory mode (Geforce GT750M 2G)
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16, 'cudnn'}, -- 552 seconds (gpu streching, not recommended)
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16, 'cudnn'}, -- 1506 seconds
+
+-- speed mode V.S. memory mode (Sapphire Radeon R9 280 3G)
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16, 'clnn'}, -- 193 seconds (240 seconds total)
+-- {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16, 'clnn'}, -- 175 seconds (216 seconds total)
 local list_params = { 
-                        {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'speed', 256, 16}, 
+                        {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16, 'cudnn'},
                     }    
 
 for i_test = 1, #list_params do
-    local state = syn_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19])
+    local state = syn_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19], list_params[i_test][20], list_params[i_test][21])
     collectgarbage()
 end
 
