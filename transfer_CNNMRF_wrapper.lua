@@ -13,6 +13,11 @@ paths.dofile('mylib/content.lua')
 torch.setdefaulttensortype('torch.FloatTensor') -- float as default tensor type
 
 local function main(params)
+  os.execute('mkdir data/result/')
+  os.execute('mkdir data/result/trans/')
+  os.execute('mkdir data/result/trans/MRF/')
+  os.execute(string.format('mkdir %s', params.output_folder))
+
   local net = nn.Sequential()
   local next_content_idx = 1
   local i_net_layer = 0
@@ -317,7 +322,7 @@ local function main(params)
     local disp = deprocess(input_image:float())
     disp = image.minmax{tensor=disp, min=0, max=1}
     disp = image.scale(disp, render_width, render_height, 'bilinear')
-    local filename = string.format('%s/res_%d_%f.jpg', params.output_folder, cur_res, t)
+    local filename = string.format('%s/res_%d_%d.jpg', params.output_folder, cur_res, t)
     image.save(filename, disp)
     end
   end
@@ -570,10 +575,6 @@ local function run_test(content_name, style_name, ini_method, max_size, num_res,
   params.save_iter = 10
 
   params.output_folder = string.format('data/result/trans/MRF/%s_TO_%s',params.content_name,  params.style_name)
-  os.execute('mkdir data/result/')
-  os.execute('mkdir data/result/trans/')
-  os.execute('mkdir data/result/trans/MRF/')
-  os.execute(string.format('mkdir %s', params.output_folder))
 
   main(params)
 
