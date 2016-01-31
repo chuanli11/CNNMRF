@@ -84,17 +84,17 @@ function computeBB(width, height, alpha)
 	local x0 = width / 2
 	local y0 = height / 2
 
-	x1r = x0+(x1-x0)*math.cos(alpha)+(y1-y0)*math.sin(alpha)
-	y1r = y0-(x1-x0)*math.sin(alpha)+(y1-y0)*math.cos(alpha)
+	local x1r = x0+(x1-x0)*math.cos(alpha)+(y1-y0)*math.sin(alpha)
+	local y1r = y0-(x1-x0)*math.sin(alpha)+(y1-y0)*math.cos(alpha)
 
-	x2r = x0+(x2-x0)*math.cos(alpha)+(y2-y0)*math.sin(alpha)
-	y2r = y0-(x2-x0)*math.sin(alpha)+(y2-y0)*math.cos(alpha)
+	local x2r = x0+(x2-x0)*math.cos(alpha)+(y2-y0)*math.sin(alpha)
+	local y2r = y0-(x2-x0)*math.sin(alpha)+(y2-y0)*math.cos(alpha)
 
-	x3r = x0+(x3-x0)*math.cos(alpha)+(y3-y0)*math.sin(alpha)
-	y3r = y0-(x3-x0)*math.sin(alpha)+(y3-y0)*math.cos(alpha)
+	local x3r = x0+(x3-x0)*math.cos(alpha)+(y3-y0)*math.sin(alpha)
+	local y3r = y0-(x3-x0)*math.sin(alpha)+(y3-y0)*math.cos(alpha)
 
-	x4r = x0+(x4-x0)*math.cos(alpha)+(y4-y0)*math.sin(alpha)
-	y4r = y0-(x4-x0)*math.sin(alpha)+(y4-y0)*math.cos(alpha)
+	local x4r = x0+(x4-x0)*math.cos(alpha)+(y4-y0)*math.sin(alpha)
+	local y4r = y0-(x4-x0)*math.sin(alpha)+(y4-y0)*math.cos(alpha)
 
 	-- print(x1r .. ' ' .. y1r .. ' ' .. x2r .. ' ' .. y2r .. ' ' .. x3r .. ' ' .. y3r .. ' ' .. x4r .. ' ' .. y4r)
 	if alpha > 0 then
@@ -139,7 +139,7 @@ function computeBB(width, height, alpha)
 end
 
 function computegrid(width, height, block_size, block_stride, flag_all)
-	coord_block_y = torch.range(1, height - block_size + 1, block_stride) 
+	local coord_block_y = torch.range(1, height - block_size + 1, block_stride)
 	if flag_all == 1 then
 		if coord_block_y[#coord_block_y] < height - block_size + 1 then
 		  local tail = torch.Tensor(1)
@@ -147,7 +147,7 @@ function computegrid(width, height, block_size, block_stride, flag_all)
 		  coord_block_y = torch.cat(coord_block_y, tail)
 		end
 	end
-	coord_block_x = torch.range(1, width - block_size + 1, block_stride) 
+	local coord_block_x = torch.range(1, width - block_size + 1, block_stride)
 	if flag_all == 1 then
 		if coord_block_x[#coord_block_x] < width - block_size + 1 then
 		  local tail = torch.Tensor(1)
@@ -156,4 +156,30 @@ function computegrid(width, height, block_size, block_stride, flag_all)
 		end
 	end
 	return coord_block_x, coord_block_y
+end
+
+function preprocess(img)
+	local mean_pixel = torch.Tensor({103.939, 116.779, 123.68})
+	local perm = torch.LongTensor{3, 2, 1}
+	img = img:index(1, perm):mul(256.0)
+	mean_pixel = mean_pixel:view(3, 1, 1):expandAs(img)
+	img:add(-1, mean_pixel)
+	return img
+end
+
+-- Undo the above preprocessing.
+function deprocess(img)
+	local mean_pixel = torch.Tensor({103.939, 116.779, 123.68})
+	mean_pixel = mean_pixel:view(3, 1, 1):expandAs(img)
+	img = img + mean_pixel:float()
+	local perm = torch.LongTensor{3, 2, 1}
+	img = img:index(1, perm):div(256.0)
+	return img
+end
+
+function run_tests(run_type, list_params)
+	local wrapper = run_type
+    for i_test = 1, #list_params do
+        wrapper.run_test(table.unpack(list_params[i_test]))
+    end
 end

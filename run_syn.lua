@@ -1,17 +1,8 @@
-require 'torch'
-require 'nn'
-require 'image'
 require 'paths'
-
-paths.dofile('mylib/myoptimizer.lua')
-paths.dofile('mylib/tv.lua')
-paths.dofile('mylib/mrf.lua')
 paths.dofile('mylib/helper.lua')
 
-syn_CNNMRF_wrapper = require 'syn_CNNMRF_wrapper'
-
 -----------------------------------------
--- parameters:
+-- Parameters:
 -----------------------------------------
 -- content_name: the content image located in folder "data/content". Notice for free synthesis this image is only used for initialization (and only when "ini_method" is set to "image")
 -- style_name: the style image located in folder "data/style" 
@@ -23,11 +14,11 @@ syn_CNNMRF_wrapper = require 'syn_CNNMRF_wrapper'
 
 -- mrf_layers: the layers for MRF constraint. Usualy layer 21 alone already gives decent results. Including layer 12 may improve the results but at significantly more computational cost.
 -- mrf_weight: weight for each MRF layer. Default value 1e-4. For free texture synthesis it can be seen as the "learning rate" in gradient decent.
--- mrf_patch_size: the patch size for MRF constraint. By default value 3. This value is defined seperately for each MRF layer.
+-- mrf_patch_size: the patch size for MRF constraint. Default value 3. This value is defined seperately for each MRF layer.
 -- mrf_num_rotation: To matching objects of different poses. Default value 0. This value is shared by all MRF layers. The total number of rotatoinal copies is "2 * mrf_num_rotation + 1"
 -- mrf_num_scale: To matching objects of different scales. Default value 0. This value is shared by all MRF layers. The total number of scaled copies is "2 * mrf_num_scale + 1"
--- mrf_sample_stride: stride to sample mrf on style image. Default value 2. This value is defined seperately for each MRF layer. This value is defined for each MRF layer.
--- mrf_synthesis_stride: stride to sample mrf on synthesis image. Default value 2. This value is defined seperately for each MRF layer. This value is defined for each MRF layer.
+-- mrf_sample_stride: stride to sample mrf on style image. Default value 2. This value is defined seperately for each MRF layer.
+-- mrf_synthesis_stride: stride to sample mrf on synthesis image. Default value 2. This value is defined seperately for each MRF layer.
 -- mrf_confidence_threshold: threshold for filtering out bad matching. Default value 0 -- means we keep all matchings. This value is defined seperately for all layers.
 
 -- tv_weight: TV smoothness weight. Default value 1e-3.
@@ -55,10 +46,4 @@ local list_params = {
                         {'2', '2', 'random', 384, 2, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, 1e-3, 'memory', 256, 16, 'cudnn'},
                     }    
 
-for i_test = 1, #list_params do
-    local state = syn_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19], list_params[i_test][20], list_params[i_test][21])
-    collectgarbage()
-end
-
-
-do return end
+run_tests(require 'syn_CNNMRF_wrapper', list_params)
