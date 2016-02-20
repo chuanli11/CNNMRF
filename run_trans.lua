@@ -1,18 +1,8 @@
-require 'torch'
-require 'nn'
-require 'image'
 require 'paths'
-
-paths.dofile('mylib/myoptimizer.lua')
-paths.dofile('mylib/tv.lua')
-paths.dofile('mylib/content.lua')
-paths.dofile('mylib/mrf.lua')
 paths.dofile('mylib/helper.lua')
 
-transfer_CNNMRF_wrapper = require 'transfer_CNNMRF_wrapper'
-
 -----------------------------------------
--- Parameters
+-- Parameters:
 -----------------------------------------
 -- content_name: the content image located in folder "data/content"
 -- style_name: the style image located in folder "data/style" 
@@ -77,12 +67,6 @@ local list_params = {
                     {'0', '0', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'speed', 256, 16, 'cudnn'},
                     {'1', '1', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 3, 3, {2, 2}, {2, 2}, {0, 0}, {23}, 0.5e1, 1e-3, 'speed', 256, 16, 'cudnn'},
                     {'potrait1', 'picasso', 'image', 384, 3, {100, 100, 100}, {12, 21}, {1e-4, 1e-4}, {3, 3}, 1, 1, {2, 2}, {2, 2}, {0, 0}, {23}, 2e1, 1e-3, 'memory', 256, 16, 'clnn'},
-                    }
+}
 
-for i_test = 1, #list_params do
-    local state = transfer_CNNMRF_wrapper.state(list_params[i_test][1], list_params[i_test][2], list_params[i_test][3], list_params[i_test][4], list_params[i_test][5], list_params[i_test][6], list_params[i_test][7], list_params[i_test][8], list_params[i_test][9], list_params[i_test][10], list_params[i_test][11], list_params[i_test][12], list_params[i_test][13], list_params[i_test][14], list_params[i_test][15], list_params[i_test][16], list_params[i_test][17], list_params[i_test][18], list_params[i_test][19], list_params[i_test][20], list_params[i_test][21])
-    collectgarbage()
-end
-
-
-do return end
+run_tests(require 'transfer_CNNMRF_wrapper', list_params)

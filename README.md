@@ -6,7 +6,7 @@ This algorithm is for
 * guided image synthesis (for example, transfer the style between different images)
 
 # Hardware
-* For cuda backend: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. There is also an opencl backend (thanks to Dionýz Lazar). See "run_trans.lua" and "run_syn.lua" for our reference tests with Titan X, GT750M 2G and Sapphire Radeon R9 280 3G.  
+* For CUDA backend: choose 'speed' if your have at least 4GB graphic memory, and 'memory' otherwise. There is also an opencl backend (thanks to Dionýz Lazar). See "run_trans.lua" and "run_syn.lua" for our reference tests with Titan X, GT750M 2G and Sapphire Radeon R9 280 3G.
 
 
 # Examples
@@ -57,13 +57,13 @@ Pre-trained network:
 We use the the original VGG-19 model. You can find the download script at [Neural Style](https://github.com/jcjohnson/neural-style). The downloaded model and prototxt file MUST be saved in the folder "data/models"
 
 # Un-guided Synthesis
-* Run `qlua run_syn.lua` in a terminal. The algorithm will create a synthesis image of twice the size as the style input image.
+* Run `qlua cnnmrf.lua` in a terminal. Most important parameters are '-style_image' for specifying style input image and '-max_size' for resulting image size.
 * The content/style images are located in the folders "data/content" and "data/style" respectively. Notice by default the content image is the same as the style image; and the content image is only used for initalization (optional). 
 * Results are located in the folder "data/result/freesyn/MRF"
-* Parameters are defined & explained in "run_syn.lua".
+* All parameters are explained in "qlua cnnmrf.lua --help".
 
 # Guided Synthesis
-* Run `qlua run_trans.lua` in a terminal. The algorithm will synthesis using the texture of the style image and the structure of the content image. 
+* Run `qlua run_trans.lua` in a terminal. Most important parameters are '-style_image' for specifying style input image, '-content_image' for specifying content input image and '-max_size' for resulting image size.
 * The content/style images are located in the folders "data/content" and "data/style" respectively. 
 * Results are located in the folder "data/result/trans/MRF"
 * Parameters are defined & explained in "run_trans.lua".

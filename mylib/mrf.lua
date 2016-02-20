@@ -179,7 +179,7 @@ function MRFMM:updateGradInput(input, gradOutput)
   end
 
   -- local timer_AFT = torch.Timer()
-  max_response, max_id = torch.max(self.response, 1)
+  local max_response, max_id = torch.max(self.response, 1)
   -- local t_aft = timer_AFT:time().real
 
   -- local t_match = timer_MATCH:time().real
