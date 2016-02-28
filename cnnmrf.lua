@@ -4,34 +4,57 @@ require 'paths'
 
 paths.dofile('mylib/helper.lua')
 
+--adapted from http://lua-users.org/wiki/SplitJoin
+    function split(str, pat, cast_to_func)
+    local t = {}  -- NOTE: use {n = 0} in Lua-5.0
+    local fpat = "(.-)" .. pat
+    local last_end = 1
+    local s, e, cap = str:find(fpat, 1)
+    while s do
+        if s ~= 1 or cap ~= "" then
+            table.insert(t, cast_to_func(cap))
+        end
+        last_end = e+1
+        s, e, cap = str:find(fpat, last_end)
+    end
+    if last_end <= #str then
+        cap = str:sub(last_end)
+        table.insert(t, cast_to_func(cap))
+    end
+    return t
+end
+
 -----------------------------------------
 -- Parameters
 -----------------------------------------
 
-
-
 cmd = torch.CmdLine()
 
+cmd:text('Below are all options with their default values in [].')
+cmd:text()
+cmd:text('Basic options: ')
 cmd:option('-content_name', 'potrait1', "The content image located in folder 'data/content'")
 cmd:option('-style_name', 'picasso', "The style image located in folder 'data/style'")
 cmd:option('-ini_method', 'image', "Initial method, set to 'image' to use the content image as the initialization; set to 'random' to use random noise.")
-cmd:option('-type', 'transfer', 'transfer|syn')
+cmd:option('-type', 'transfer', 'Use Guided Synthesis (transfer) or Un-guided Synthesis (syn)')
 cmd:option('-max_size',384, "Maximum size of the image. Larger image needs more time and memory.")
 cmd:option('-backend','cudnn', "Use cudnn' for CUDA-enabled GPUs or 'clnn' for OpenCL.")
 cmd:option('-mode','speed', "Try 'speed' if you have a GPU with more than 4GB memory, and try 'memory' otherwise. The 'speed' mode is significantly faster (especially for synthesizing high resolutions) at the cost of higher GPU memory. ")
-
 cmd:option('-num_res',3, "Number of resolutions. Notice the lowest resolution image should be larger than the patch size otherwise it won't synthesize.")
-cmd:option('-num_iter',{100, 100, 100}, "Number of iterations for each resolution.")
-cmd:option('-mrf_layers',{12, 21}, "The layers for MRF constraint. Usualy layer 21 alone already gives decent results. Including layer 12 may improve the results but at significantly more computational cost.")
-cmd:option('-mrf_weight',{1e-4, 1e-4}, "Weight for each MRF layer. Higher weights leads to more style faithful results.")
-cmd:option('-mrf_patch_size',{3, 3}, "The patch size for MRF constraint. This value is defined seperately for each MRF layer.")
+cmd:option('-num_iter','100,100,100', "Number of iterations for each resolution. You can use comma-separated values.")
+
+cmd:text()
+cmd:text('Advanced options: ')
+cmd:option('-mrf_layers','12,21', "The layers for MRF constraint. Usually layer 21 alone already gives decent results. Including layer 12 may improve the results but at significantly more computational cost. You can use comma-separated values.")
+cmd:option('-mrf_weight','1e-4,1e-4', "Weight for each MRF layer. Higher weights leads to more style faithful results. You can use comma-separated values.")
+cmd:option('-mrf_patch_size', '3,3', "The patch size for MRF constraint. This value is defined seperately for each MRF layer. You can use comma-separated values.")
 cmd:option('-target_num_rotation',0, 'To matching objects of different poses. This value is shared by all MRF layers. The total number of rotational copies is "2 * mrf_num_rotation + 1"')
 cmd:option('-target_num_scale',0, 'To matching objects of different scales. This value is shared by all MRF layers. The total number of scaled copies is "2 * mrf_num_scale + 1"')
-cmd:option('-target_sample_stride',{2, 2}, "Stride to sample mrf on style image. This value is defined seperately for each MRF layer.")
-cmd:option('-mrf_confidence_threshold',{0, 0}, "Threshold for filtering out bad matching. Default value 0 means we keep all matchings. This value is defined seperately for all layers.")
-cmd:option('-source_sample_stride',{2, 2}, "Stride to sample mrf on synthesis image. This value is defined seperately for each MRF layer. This settings is relevant only for syn setting.")
+cmd:option('-target_sample_stride','2,2', "Stride to sample mrf on style image. This value is defined seperately for each MRF layer. You can use comma-separated values.")
+cmd:option('-mrf_confidence_threshold','0,0', "Threshold for filtering out bad matching. Default value 0 means we keep all matchings. This value is defined seperately for all layers. You can use comma-separated values.")
+cmd:option('-source_sample_stride','2,2', "Stride to sample mrf on synthesis image. This value is defined seperately for each MRF layer. This settings is relevant only for syn setting. You can use comma-separated values.")
 
-cmd:option('-content_layers',{21}, "The layers for content constraint")
+cmd:option('-content_layers','21', "The layers for content constraint. You can use comma-separated values.")
 cmd:option('-content_weight',2e1, "The weight for content constraint. Increasing this value will make the result more content faithful. Decreasing the value will make the method more style faithful. Notice this value should be increase (for example, doubled) if layer 12 is included for MRF constraint.")
 cmd:option('-tv_weight',1e-3, "TV smoothness weight")
 cmd:option('-scaler', 2, "Relative expansion from example to result. This settings is relevant only for syn setting.")
@@ -52,6 +75,12 @@ cmd:option('-print_iter', 10)
 cmd:option('-save_iter', 10)
 
 params = cmd:parse(arg)
+
+
+for _,par in pairs({'mrf_layers', 'mrf_weight', 'num_iter', 'mrf_patch_size', 'target_sample_stride', 'mrf_confidence_threshold', 'source_sample_stride', 'content_layers'}) do
+    params[par] = split(params[par], ',', tonumber)
+end
+
 
 local wrapper = nil
 if params.type == 'transfer' then
