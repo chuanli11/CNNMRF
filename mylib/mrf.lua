@@ -22,10 +22,12 @@ function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, so
   self.padH = padH or self.padW
   self.bias = torch.Tensor(nOutputPlane):fill(0)
   self.backend = backend
-  if self.backend == 'cudnn' then
-    self.bias = self.bias:cuda()
-  else
-    self.bias = self.bias:cl()
+  if params.gpu >= 0 then
+    if self.backend == 'cudnn' then
+      self.bias = self.bias:cuda()
+    else
+      self.bias = self.bias:cl()
+    end
   end
   self.gradTO = torch.Tensor(input_size[1], input_size[2], input_size[3])
   self.gradTO_confident = torch.Tensor(input_size[2], input_size[3])
@@ -116,10 +118,12 @@ function MRFMM:updateGradInput(input, gradOutput)
       source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
   end
   local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1)
-  if self.backend == 'cudnn' then
-    tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
-  else
-    tensor_source_mrfnorm = tensor_source_mrfnorm:cl()
+  if params.gpu >= 0 then
+    if self.backend == 'cudnn' then
+      tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
+    else
+      tensor_source_mrfnorm = tensor_source_mrfnorm:cl()
+    end
   end
   local nOutputPlane_all = self.nOutputPlane -- hacked for memory safety
   local num_chunk = math.ceil(nOutputPlane_all / self.gpu_chunck_size_1) 
@@ -139,18 +143,38 @@ function MRFMM:updateGradInput(input, gradOutput)
 
     if self.mode == 'memory' then
       -- local timer_IO = torch.Timer()
-      if self.backend == 'cudnn' then
-        self.weight = self.weight:cuda()
-      else
-        self.weight = self.weight:cl()
+      if params.gpu >= 0 then
+        if self.backend == 'cudnn' then
+          self.weight = self.weight:cuda()
+        else
+          self.weight = self.weight:cl()
+        end
       end
       -- t_io = t_io + timer_IO:time().real
     end
     self.nOutputPlane = i_end - i_start + 1
 
     -- local timer_CONV = torch.Timer()
-    local temp = input.nn.SpatialConvolutionMM_updateOutput(self, input)
+    --local temp = input.nn.SpatialConvolutionMM_updateOutput(self, input)
     -- t_conv = t_conv + timer_CONV:time().real
+    local subBias = self.bias:sub(i_start, i_end)
+    if params.gpu < 0 then
+      self.finput = torch.Tensor()
+      self.fgradInput = torch.Tensor()
+    end
+
+    input.THNN.SpatialConvolutionMM_updateOutput(
+      input:cdata(),
+      self.output:cdata(),
+      self.weight:cdata(),
+      subBias:cdata(),
+      self.finput:cdata(),
+      self.fgradInput:cdata(),
+      self.kW, self.kH,
+      self.dW, self.dH,
+      self.padW, self.padH
+    )
+    local temp = self.output
 
     -- normalize w.r.t source_mrfnorm
     if i_chunk < num_chunk then
@@ -202,10 +226,14 @@ function MRFMM:updateGradInput(input, gradOutput)
   -- local t_syn = timer_SYN:time().real
 
   if gradOutput:size()[1] == input:size()[1] then
-    if self.backend == 'cudnn' then
-      self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
+    if params.gpu >= 0 then
+      if self.backend == 'cudnn' then
+        self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
+      else
+        self.gradInput = gradOutput:clone() + self.gradTO:cl() * self.strength * (-1)
+      end
     else
-      self.gradInput = gradOutput:clone() + self.gradTO:cl() * self.strength * (-1)
+      self.gradInput = gradOutput:clone() + self.gradTO * self.strength * (-1)
     end
   else
     self.gradInput = self.gradTO * self.strength * (-1)

@@ -88,10 +88,12 @@ local function main(params)
       for i_s = -params.target_num_scale, params.target_num_scale do
         local max_sz = math.floor(math.max(target_image_rt_caffe:size()[2], target_image_rt_caffe:size()[3]) * torch.pow(params.target_step_scale, i_s))
         local target_image_rt_s_caffe = image.scale(target_image_rt_caffe, max_sz, 'bilinear')
-        if params.backend == 'cudnn' then
-          target_image_rt_s_caffe = target_image_rt_s_caffe:cuda()
-        else
-          target_image_rt_s_caffe = target_image_rt_s_caffe:cl()
+        if params.gpu >= 0 then
+          if params.backend == 'cudnn' then
+            target_image_rt_s_caffe = target_image_rt_s_caffe:cuda()
+          else
+            target_image_rt_s_caffe = target_image_rt_s_caffe:cl()
+          end
         end
         table.insert(target_images_caffe, target_image_rt_s_caffe)
       end
@@ -174,10 +176,14 @@ local function main(params)
     -- print('*****************************************************')
     -- print(string.format('process source image'));
     -- print('*****************************************************')
-    if params.backend == 'cudnn' then
-      net:forward(pyramid_source_image_caffe[cur_res]:cuda())
+    if params.gpu >= 0 then
+      if params.backend == 'cudnn' then
+        net:forward(pyramid_source_image_caffe[cur_res]:cuda())
+      else
+        net:forward(pyramid_source_image_caffe[cur_res]:cl())
+      end
     else
-      net:forward(pyramid_source_image_caffe[cur_res]:cl())
+      net:forward(pyramid_source_image_caffe[cur_res])
     end
     local source_feature_map = net:get(mrf_layers[id_mrf] - 1).output:float()
     if params.mrf_patch_size[id_mrf] > source_feature_map:size()[2] or params.mrf_patch_size[id_mrf] > source_feature_map:size()[3] then
@@ -280,7 +286,7 @@ local function main(params)
       cltorch.setDevice(params.gpu + 1)
     end
   else
-    params.backend = 'nn-cpu'
+    params.backend = 'nn'
   end
 
   if params.backend == 'cudnn' then
@@ -324,12 +330,13 @@ local function main(params)
       else
         error('Invalid init type')
       end
-      if params.backend == 'cudnn' then
-        input_image = input_image:cuda()
-      else
-        input_image = input_image:cl()
+      if params.gpu >= 0 then
+        if params.backend == 'cudnn' then
+          input_image = input_image:cuda()
+        else
+          input_image = input_image:cl()
+        end
       end
-
       -----------------------------------------------------
       -- add a tv layer
       -----------------------------------------------------
@@ -378,12 +385,13 @@ local function main(params)
       print('network has been built.')
     else
       input_image = image.scale(input_image:float(), pyramid_source_image_caffe[i_res]:size()[3], pyramid_source_image_caffe[i_res]:size()[2], 'bilinear'):clone()
-      if params.backend == 'cudnn' then
-        input_image = input_image:cuda()
-      else
-        input_image = input_image:cl()
+      if params.gpu >= 0 then
+        if params.backend == 'cudnn' then
+          input_image = input_image:cuda()
+        else
+          input_image = input_image:cl()
+        end
       end
-
     end
 
     print('*****************************************************')
@@ -399,10 +407,12 @@ local function main(params)
     end
 
     local mask = torch.Tensor(input_image:size()):fill(1)
-    if params.backend == 'cudnn' then
-      mask = mask:cuda()
-    else
-      mask = mask:cl()
+    if params.gpu >= 0 then
+      if params.backend == 'cudnn' then
+        mask = mask:cuda()
+      else
+        mask = mask:cl()
+      end
     end
 
     y = net:forward(input_image)
