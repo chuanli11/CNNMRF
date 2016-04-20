@@ -4,7 +4,7 @@ function MRFMM:__init()
    parent.__init(self)
 end
 
-function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, dW, dH, threshold_conf, strength, gpu_chunck_size_1, gpu_chunck_size_2, backend)
+function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, dW, dH, threshold_conf, strength, gpu_chunck_size_1, gpu_chunck_size_2, backend, gpu)
   self.target_mrf = target_mrf:clone()
   self.target_mrfnorm = target_mrfnorm:clone()
   self.source_x = source_x
@@ -22,7 +22,8 @@ function MRFMM:implement(mode, target_mrf, tensor_target_mrf, target_mrfnorm, so
   self.padH = padH or self.padW
   self.bias = torch.Tensor(nOutputPlane):fill(0)
   self.backend = backend
-  if params.gpu >= 0 then
+  self.gpu = gpu
+  if self.gpu >= 0 then
     if self.backend == 'cudnn' then
       self.bias = self.bias:cuda()
     else
@@ -118,7 +119,7 @@ function MRFMM:updateGradInput(input, gradOutput)
       source_mrfnorm = torch.sqrt(torch.sum(torch.cmul(source_mrf, source_mrf), 2)):resize(1, y:nElement(), x:nElement())
   end
   local tensor_source_mrfnorm = torch.repeatTensor(source_mrfnorm, self.gpu_chunck_size_1, 1, 1)
-  if params.gpu >= 0 then
+  if self.gpu >= 0 then
     if self.backend == 'cudnn' then
       tensor_source_mrfnorm = tensor_source_mrfnorm:cuda()
     else
@@ -143,7 +144,7 @@ function MRFMM:updateGradInput(input, gradOutput)
 
     if self.mode == 'memory' then
       -- local timer_IO = torch.Timer()
-      if params.gpu >= 0 then
+      if self.gpu >= 0 then
         if self.backend == 'cudnn' then
           self.weight = self.weight:cuda()
         else
@@ -158,7 +159,7 @@ function MRFMM:updateGradInput(input, gradOutput)
     --local temp = input.nn.SpatialConvolutionMM_updateOutput(self, input)
     -- t_conv = t_conv + timer_CONV:time().real
     local subBias = self.bias:sub(i_start, i_end)
-    if params.gpu < 0 then
+    if self.gpu < 0 then
       self.finput = torch.Tensor()
       self.fgradInput = torch.Tensor()
     end
@@ -226,7 +227,7 @@ function MRFMM:updateGradInput(input, gradOutput)
   -- local t_syn = timer_SYN:time().real
 
   if gradOutput:size()[1] == input:size()[1] then
-    if params.gpu >= 0 then
+    if self.gpu >= 0 then
       if self.backend == 'cudnn' then
         self.gradInput = gradOutput:clone() + self.gradTO:cuda() * self.strength * (-1)
       else

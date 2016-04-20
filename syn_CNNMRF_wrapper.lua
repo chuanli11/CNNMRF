@@ -223,7 +223,7 @@ local function main(params)
     response_size[1] = nOutputPlane
     response_size[2] = source_ygrid_:nElement()
     response_size[3] = source_xgrid_:nElement()
-    net:get(mrf_layers[id_mrf]):implement(params.mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, 1, 1, params.mrf_confidence_threshold[id_mrf], params.mrf_weight[id_mrf], params.gpu_chunck_size_1, params.gpu_chunck_size_2, params.backend)
+    net:get(mrf_layers[id_mrf]):implement(params.mode, target_mrf, tensor_target_mrf, target_mrfnorm, source_x, source_y, input_size, response_size, nInputPlane, nOutputPlane, kW, kH, 1, 1, params.mrf_confidence_threshold[id_mrf], params.mrf_weight[id_mrf], params.gpu_chunck_size_1, params.gpu_chunck_size_2, params.backend, params.gpu)
     target_mrf = nil
     tensor_target_mrf = nil
     source_feature_map = nil
