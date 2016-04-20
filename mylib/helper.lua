@@ -135,7 +135,7 @@ function computeBB(width, height, alpha)
 	  end
 	end
 
-	return math.floor(min_x), math.floor(min_y), math.floor(max_x), math.floor(max_y)
+	return math.max(math.floor(min_x), 1), math.max(math.floor(min_y), 1), math.floor(max_x), math.floor(max_y)
 end
 
 function computegrid(width, height, block_size, block_stride, flag_all)
