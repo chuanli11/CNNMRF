@@ -39,31 +39,53 @@ This algorithm is for
 <p>It is possible to balance the amount of content and the style in the result: pictures in the second coloumn take more content, and pictures in the third column take more style.</p>
 
 # Setup
-This code is based on Torch. It has only been tested on Mac and Ubuntu.
 
-Dependencies:
-* [Torch](https://github.com/torch/torch7)
-* [loadcaffe](https://github.com/szagoruyko/loadcaffe)
+As building Torch with the latest CUDA is a troublesome work, we recommend following the following steps to people who want to reproduce the results: 
+It has been tested on Ubuntu with CUDA 10.
 
-For CUDA backend:
+__Step One: Install CUDA 10 and CUDNN 7.6.2 from these links__
+
+If you have a fresh Ubuntu, we recommend [Lambda Stack](https://lambdalabs.com/lambda-stack-deep-learning-software) which helps you install the latest drivers, libraries, and frameworks for deep learning. Otherwise, you can install the CUDA toolkit and CUDNN from these links:
 * [CUDA](https://developer.nvidia.com/cuda-downloads)
-* [cudnn](https://developer.nvidia.com/cudnn)
+* [CUDNN](https://developer.nvidia.com/cudnn)
 
-For OpenCL backend:
-* [cltorch](https://github.com/hughperkins/cltorch)
-* [clnn](https://github.com/hughperkins/clnn)
+__Step Two: Install Torch__
+```
+git clone https://github.com/nagadomi/distro.git ~/torch --recursive
+cd ~/torch
+./install-deps
+./clean.sh
+./update.sh
 
+. ~/torch/install/bin/torch-activate
+sudo apt-get install libprotobuf-dev protobuf-compiler
+luarocks install loadcaffe
+```
+
+__Step Three: Download Pre-trained VGG Network__
 Pre-trained network:
-We use the the original VGG-19 model. You can find the download script at [Neural Style](https://github.com/jcjohnson/neural-style). The downloaded model and prototxt file MUST be saved in the folder "data/models"
+
+```
+cd data/models
+./download_models.sh
+```
 
 # Un-guided Synthesis
-* Run `qlua cnnmrf.lua` in a terminal. Most important parameters are '-style_image' for specifying style input image and '-max_size' for resulting image size.
+
+```
+qlua cnnmrf.lua
+```
+
+* Most important parameters are '-style_image' for specifying style input image and '-max_size' for resulting image size.
 * The content/style images are located in the folders "data/content" and "data/style" respectively. Notice by default the content image is the same as the style image; and the content image is only used for initalization (optional). 
 * Results are located in the folder "data/result/freesyn/MRF"
 * All parameters are explained in "qlua cnnmrf.lua --help".
 
 # Guided Synthesis
-* Run `qlua run_trans.lua` in a terminal. Most important parameters are '-style_image' for specifying style input image, '-content_image' for specifying content input image and '-max_size' for resulting image size.
+
+```qlua run_trans.lua```
+
+* Most important parameters are '-style_image' for specifying style input image, '-content_image' for specifying content input image and '-max_size' for resulting image size.
 * The content/style images are located in the folders "data/content" and "data/style" respectively. 
 * Results are located in the folder "data/result/trans/MRF"
 * Parameters are defined & explained in "run_trans.lua".
