@@ -43,7 +43,7 @@ This algorithm is for
 As building Torch with the latest CUDA is a troublesome work, we recommend following the following steps to people who want to reproduce the results: 
 It has been tested on Ubuntu with CUDA 10.
 
-__Step One: Install CUDA 10 and CUDNN 7.6.2 from these links__
+__Step One: Install CUDA 10 and CUDNN 7.6.2__
 
 If you have a fresh Ubuntu, we recommend [Lambda Stack](https://lambdalabs.com/lambda-stack-deep-learning-software) which helps you install the latest drivers, libraries, and frameworks for deep learning. Otherwise, you can install the CUDA toolkit and CUDNN from these links:
 * [CUDA](https://developer.nvidia.com/cuda-downloads)
